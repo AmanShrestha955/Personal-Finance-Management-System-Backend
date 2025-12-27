@@ -5,11 +5,19 @@ const crypto = require("crypto");
 const {
   sendVerificationEmail,
 } = require("../middlewares/sendVerificationEmail.js");
+const {
+  sendForgotPasswordEmail,
+} = require("../middlewares/sendForgotPasswordEmail.js");
 
 const Signup = async (req, res) => {
   const { name, email, password, confirmPassword } = req.body;
   if (!password === confirmPassword) {
     return res.status(400).json({ message: "password do not match" });
+  }
+  if (password.length < 6) {
+    return res
+      .status(400)
+      .json({ message: "password must be at least 6 characters long" });
   }
   try {
     const userExists = await User.findOne({ email });
@@ -100,4 +108,73 @@ const verifyEmail = async (req, res) => {
   }
 };
 
-module.exports = { Signup, Login, verifyEmail };
+const forgotPassword = async (req, res) => {
+  try {
+    const { email } = req.body;
+    const user = await User.findOne({ email });
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
+    }
+    const resetToken = crypto.randomBytes(32).toString("hex");
+
+    const hashedResetToken = crypto
+      .createHash("sha256")
+      .update(resetToken)
+      .digest("hex");
+
+    user.passwordResetToken = hashedResetToken;
+    user.passwordResetExpires = Date.now() + 15 * 60 * 1000; //15 minutes
+    await user.save();
+
+    const resetUrl = `${process.env.FRONTEND_URL}/reset-password/${resetToken}`;
+
+    sendForgotPasswordEmail(email, resetUrl);
+    res.status(200).json({
+      message: "Password reset email sent successfully",
+    });
+  } catch (error) {
+    console.log(error);
+    res.status(500).json({
+      message: "Forgot password failed. error in forgotPassword function",
+      error: error.message,
+    });
+  }
+};
+
+const resetPassword = async (req, res) => {
+  try {
+    const { token } = req.params;
+    const { newPassword } = req.body;
+    if (!newPassword || newPassword.length < 6) {
+      return res.status(400).json({
+        message:
+          "New password is required and should be at least 6 characters long",
+      });
+    }
+    const hashedToken = crypto.createHash("sha256").update(token).digest("hex");
+
+    const user = await User.findOne({
+      passwordResetToken: hashedToken,
+      passwordResetExpires: { $gt: Date.now() },
+    });
+
+    if (!user) {
+      return res.status(400).json({ message: "Invalid or expired token" });
+    }
+    const hashedPassword = await bcrypt.hash(newPassword, 10);
+    user.password = hashedPassword;
+    user.passwordResetToken = undefined;
+    user.passwordResetExpires = undefined;
+    await user.save();
+
+    res.status(200).json({ message: "Password reset successfully" });
+  } catch (error) {
+    console.log(error);
+    res.status(500).json({
+      message: "Reset password failed. error in resetPassword function",
+      error: error.message,
+    });
+  }
+};
+
+module.exports = { Signup, Login, verifyEmail, forgotPassword, resetPassword };

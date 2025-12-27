@@ -2,6 +2,8 @@ const express = require("express");
 const cors = require("cors");
 const { connectDB } = require("./config/db.js");
 const authRouter = require("./routes/authRoute.js");
+const transactionRouter = require("./routes/transactionRoute.js");
+const accountRouter = require("./routes/accountRoute.js");
 
 connectDB();
 
@@ -14,5 +16,7 @@ app.get("/home", (req, res) => {
 });
 
 app.use("/api/auth", authRouter);
+app.use("/api/transactions", transactionRouter);
+app.use("/api/accounts", accountRouter);
 
 module.exports = app;

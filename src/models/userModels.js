@@ -31,8 +31,14 @@ const UserSchema = new Schema(
       type: Boolean,
       default: false,
     },
+    isOnboarded: {
+      type: Boolean,
+      default: false,
+    },
     verificationToken: String,
     verificationTime: Date,
+    passwordResetToken: String,
+    passwordResetExpires: Date,
   },
   { timestamps: true }
 );
