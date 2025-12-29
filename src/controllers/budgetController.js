@@ -2,13 +2,13 @@ const Budget = require("../models/budgetModels.js");
 
 const createBudget = async (req, res) => {
   try {
-    const { category, budgetAmount, spentAmount, alertThreshold } = req.body;
+    console.log("budget is created.");
+    const { category, budgetAmount, alertThreshold } = req.body;
     const { id } = req.user;
     const budget = new Budget({
       userId: id,
       category: category,
       budgetAmount: budgetAmount,
-      spentAmount: spentAmount,
       alertThreshold: alertThreshold,
     });
     const savedBudget = await budget.save();

@@ -1,11 +1,15 @@
 const Transaction = require("../models/transactionModels.js");
+const Budget = require("../models/budgetModels.js");
 const Account = require("../models/accountModels.js");
 const mongoose = require("mongoose");
 
 const createTransaction = async (req, res) => {
+  const session = await mongoose.startSession();
+  session.startTransaction();
   try {
     console.log("Request Body:", req.body);
     const {
+      title,
       amount,
       type,
       accountId,
@@ -13,56 +17,118 @@ const createTransaction = async (req, res) => {
       transactionDate,
       description,
       note,
-      recipt,
+      receipt,
       tags,
     } = req.body;
     const { id } = req.user;
-    const account = await Account.findById(accountId);
+    // Validation
+    if (!amount || !type || !accountId || !category) {
+      await session.abortTransaction();
+      return res.status(400).json({
+        message: "Amount, type, accountId, and category are required",
+      });
+    }
+    if (!title) {
+      await session.abortTransaction();
+      return res.status(400).json({
+        message: "Title is required",
+      });
+    }
+    if (amount <= 0) {
+      await session.abortTransaction();
+      return res.status(400).json({
+        message: "Amount must be positive",
+      });
+    }
+    if (!["income", "expense"].includes(type)) {
+      await session.abortTransaction();
+      return res.status(400).json({
+        message: "Type must be either 'income' or 'expense'",
+      });
+    }
+    const account = await Account.findById(accountId).session(session);
     if (!account) {
+      await session.abortTransaction();
       return res.status(404).json({ message: "Account not found" });
     }
     if (account.userId.toString() !== id) {
+      await session.abortTransaction();
       return res
         .status(403)
         .json({ message: "You are not authorized to access this account" });
     }
+    // Check for sufficient balance for expenses
+    if (type === "expense" && account.balance < amount) {
+      await session.abortTransaction();
+      return res.status(400).json({
+        message: "Insufficient account balance",
+      });
+    }
     const newTransaction = new Transaction({
       userId: id,
       accountId,
+      title,
       amount,
       type,
       category,
-      transactionDate,
+      transactionDate: transactionDate || new Date(),
       description,
       note,
-      recipt,
+      receipt,
       tags,
     });
-    const savedTransaction = await newTransaction.save();
-    if (!savedTransaction) {
-      return res.status(500).json({ message: "Failed to create transaction" });
+
+    await newTransaction.save({ session });
+
+    // Update budget only for expenses
+    let updatedBudget = null;
+    if (type === "expense") {
+      const budget = await Budget.findOne({
+        userId: id,
+        category: category,
+      }).session(session);
+      if (budget) {
+        budget.spentAmount += amount;
+        await budget.save({ session });
+        updatedBudget = budget;
+      }
     }
-    const updatedAccount = await Account.findById(accountId);
+
     if (type === "income") {
-      updatedAccount.balance += amount;
+      account.balance += amount;
     } else if (type === "expense") {
-      updatedAccount.balance -= amount;
+      account.balance -= amount;
     }
-    await updatedAccount.save();
+
+    await account.save({ session });
+
+    // Build response object
+    const responseData = {
+      transaction: newTransaction,
+      account: account,
+    };
+
+    // Only include budget if it was updated
+    if (updatedBudget) {
+      responseData.budget = updatedBudget;
+    }
+
+    await session.commitTransaction();
+
     res.status(201).json({
       message: "Transaction created successfully",
-      data: {
-        transaction: newTransaction,
-        account: updatedAccount,
-      },
+      data: responseData,
     });
   } catch (error) {
+    await session.abortTransaction();
     console.log(error);
     res.status(500).json({
       message:
         "Transaction creation failed. error in createTransaction function",
       error: error.message,
     });
+  } finally {
+    session.endSession();
   }
 };
 
@@ -112,67 +178,145 @@ const updateTransaction = async (req, res) => {
     const { id } = req.user;
 
     const {
+      title,
       amount,
       type,
       category,
       transactionDate,
       description,
       note,
-      recipt,
+      receipt,
       tags,
     } = req.body;
     const { transactionId } = req.params;
 
+    // Find transaction first
     const transaction = await Transaction.findById(transactionId).session(
       session
     );
 
     if (!transaction) {
+      await session.abortTransaction();
+      session.endSession();
       return res.status(404).json({ message: "Transaction not found" });
     }
 
     if (transaction.userId.toString() !== id) {
+      await session.abortTransaction();
+      session.endSession();
       return res
         .status(403)
         .json({ message: "You are not authorized to update this transaction" });
+    }
+
+    // Get new values with fallbacks
+    const newTitle = title || transaction.title;
+    const newAmount = amount !== undefined ? amount : transaction.amount;
+    const newType = type || transaction.type;
+    const newCategory = category || transaction.category;
+
+    // Validation on new values
+    if (!newTitle) {
+      await session.abortTransaction();
+      session.endSession();
+      return res.status(400).json({
+        message: "Title is required",
+      });
+    }
+    if (newAmount <= 0) {
+      await session.abortTransaction();
+      session.endSession();
+      return res.status(400).json({
+        message: "Amount must be positive",
+      });
+    }
+    if (!["income", "expense"].includes(newType)) {
+      await session.abortTransaction();
+      session.endSession();
+      return res.status(400).json({
+        message: "Type must be either 'income' or 'expense'",
+      });
     }
 
     const account = await Account.findById(transaction.accountId).session(
       session
     );
     if (!account) {
+      await session.abortTransaction();
+      session.endSession();
       return res.status(404).json({ message: "Account not found" });
     }
 
+    // Calculate the net effect on account balance
+    let balanceChange = 0;
+
+    // Reverse old transaction effect
     if (transaction.type === "income") {
-      account.balance -= transaction.amount;
+      balanceChange -= transaction.amount; // Remove old income
     } else if (transaction.type === "expense") {
-      account.balance += transaction.amount;
+      balanceChange += transaction.amount; // Reverse old expense
     }
 
-    const newType = type || transaction.type;
-    const newAmount = amount || transaction.amount;
-
+    // Apply new transaction effect
     if (newType === "income") {
-      account.balance += newAmount;
+      balanceChange += newAmount;
     } else if (newType === "expense") {
-      account.balance -= newAmount;
+      balanceChange -= newAmount;
     }
 
-    // Update the fields
+    // Check for sufficient balance
+    const projectedBalance = account.balance + balanceChange;
+    if (projectedBalance < 0) {
+      await session.abortTransaction();
+      session.endSession();
+      return res.status(400).json({
+        message: "Insufficient account balance for this update",
+      });
+    }
+
+    // Update budgets only for expenses
+    // Remove old expense from old budget
+    if (transaction.type === "expense") {
+      const oldBudget = await Budget.findOne({
+        userId: id,
+        category: transaction.category,
+      }).session(session);
+      if (oldBudget) {
+        oldBudget.spentAmount -= transaction.amount;
+        await oldBudget.save({ session });
+      }
+    }
+
+    // Add new expense to new budget
+    if (newType === "expense") {
+      const newBudget = await Budget.findOne({
+        userId: id,
+        category: newCategory,
+      }).session(session);
+      if (newBudget) {
+        newBudget.spentAmount += newAmount;
+        await newBudget.save({ session });
+      }
+    }
+
+    // Update account balance
+    account.balance = projectedBalance;
+    await account.save({ session });
+
+    // Update transaction fields
+    transaction.title = newTitle;
     transaction.amount = newAmount;
     transaction.type = newType;
-    transaction.category = category || transaction.category;
+    transaction.category = newCategory;
     transaction.transactionDate =
       transactionDate || transaction.transactionDate;
-    transaction.description = description || transaction.description;
-    transaction.note = note || transaction.note;
-    transaction.recipt = recipt || transaction.recipt;
-    transaction.tags = tags || transaction.tags;
+    transaction.description =
+      description !== undefined ? description : transaction.description;
+    transaction.note = note !== undefined ? note : transaction.note;
+    transaction.receipt = receipt !== undefined ? receipt : transaction.receipt;
+    transaction.tags = tags !== undefined ? tags : transaction.tags;
 
-    // save the updated transaction
     await transaction.save({ session });
-    await account.save({ session });
 
     await session.commitTransaction();
 
@@ -197,24 +341,33 @@ const updateTransaction = async (req, res) => {
 };
 
 const deleteTransaction = async (req, res) => {
+  const session = await mongoose.startSession();
+  session.startTransaction();
   try {
     const { id } = req.user;
     const { transactionId } = req.params;
 
-    const transaction = await Transaction.findById(transactionId);
+    const transaction = await Transaction.findById(transactionId).session(
+      session
+    );
 
     if (!transaction) {
+      await session.abortTransaction();
       return res.status(404).json({ message: "Transaction not found" });
     }
 
     if (transaction.userId.toString() !== id) {
+      await session.abortTransaction();
       return res
         .status(403)
         .json({ message: "You are not authorized to delete this transaction" });
     }
 
-    const account = await Account.findById(transaction.accountId);
+    const account = await Account.findById(transaction.accountId).session(
+      session
+    );
     if (!account) {
+      await session.abortTransaction();
       return res.status(404).json({ message: "Account not found" });
     }
     if (transaction.type === "income") {
@@ -223,19 +376,36 @@ const deleteTransaction = async (req, res) => {
       account.balance += transaction.amount;
     }
 
-    await Transaction.findByIdAndDelete(transactionId);
-    await account.save();
+    if (transaction.type === "expense") {
+      const budget = await Budget.findOne({
+        userId: id,
+        category: transaction.category,
+      }).session(session);
+
+      if (budget) {
+        budget.spentAmount -= transaction.amount;
+        await budget.save({ session });
+      }
+    }
+
+    await Transaction.findByIdAndDelete(transactionId).session(session);
+    await account.save({ session });
+
+    await session.commitTransaction();
 
     res.status(200).json({
       message: "Transaction deleted successfully",
     });
   } catch (error) {
+    await session.abortTransaction();
     console.log(error);
     res.status(500).json({
       message:
         "Deleting transaction failed. error in deleteTransaction function",
       error: error.message,
     });
+  } finally {
+    session.endSession();
   }
 };
 

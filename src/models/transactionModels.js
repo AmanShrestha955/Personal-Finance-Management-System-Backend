@@ -16,7 +16,6 @@ const TransactionSchema = new Schema(
     title: {
       type: String,
       required: true,
-      trim: true,
     },
     amount: {
       type: Number,
@@ -49,7 +48,7 @@ const TransactionSchema = new Schema(
       type: String,
       trim: true,
     },
-    recipt: {
+    receipt: {
       type: String,
       trim: true,
     },
