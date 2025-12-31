@@ -35,6 +35,11 @@ const TransactionSchema = new Schema(
       required: true,
       index: true,
     },
+    paymentMethod: {
+      type: String,
+      enum: ["Cash", "Credit Card", "Debit Card", "e-Wallet"],
+      require: true,
+    },
     description: {
       type: String,
       trim: true,

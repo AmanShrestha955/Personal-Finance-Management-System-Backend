@@ -1,5 +1,6 @@
 const express = require("express");
 const cors = require("cors");
+const path = require("path");
 const { connectDB } = require("./config/db.js");
 const authRouter = require("./routes/authRoute.js");
 const transactionRouter = require("./routes/transactionRoute.js");
@@ -11,6 +12,7 @@ connectDB();
 const app = express();
 app.use(express.json());
 app.use(cors());
+app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 
 app.get("/home", (req, res) => {
   res.json({ message: "API is running... Hello world" });

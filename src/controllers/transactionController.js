@@ -8,24 +8,42 @@ const createTransaction = async (req, res) => {
   session.startTransaction();
   try {
     console.log("Request Body:", req.body);
+    console.log("Uploaded File:", req.file); // Multer adds this
+
     const {
       title,
       amount,
       type,
       accountId,
       category,
+      paymentMethod,
       transactionDate,
       description,
       note,
-      receipt,
       tags,
     } = req.body;
     const { id } = req.user;
+
+    // Parse tags if sent as JSON string
+    let parsedTags = [];
+    if (tags) {
+      try {
+        parsedTags = typeof tags === "string" ? JSON.parse(tags) : tags;
+      } catch (e) {
+        parsedTags = [];
+      }
+    }
+
+    // Get receipt path from uploaded file
+    const receiptPath = req.file ? req.file.path : null;
+    // Or use relative path: req.file ? `/uploads/receipts/${req.file.filename}` : null;
+
     // Validation
-    if (!amount || !type || !accountId || !category) {
+    if (!amount || !type || !accountId || !category || !paymentMethod) {
       await session.abortTransaction();
       return res.status(400).json({
-        message: "Amount, type, accountId, and category are required",
+        message:
+          "Amount, type, accountId, category, and paymentMethod are required",
       });
     }
     if (!title) {
@@ -46,6 +64,7 @@ const createTransaction = async (req, res) => {
         message: "Type must be either 'income' or 'expense'",
       });
     }
+
     const account = await Account.findById(accountId).session(session);
     if (!account) {
       await session.abortTransaction();
@@ -57,6 +76,7 @@ const createTransaction = async (req, res) => {
         .status(403)
         .json({ message: "You are not authorized to access this account" });
     }
+
     // Check for sufficient balance for expenses
     if (type === "expense" && account.balance < amount) {
       await session.abortTransaction();
@@ -64,6 +84,7 @@ const createTransaction = async (req, res) => {
         message: "Insufficient account balance",
       });
     }
+
     const newTransaction = new Transaction({
       userId: id,
       accountId,
@@ -71,11 +92,12 @@ const createTransaction = async (req, res) => {
       amount,
       type,
       category,
+      paymentMethod,
       transactionDate: transactionDate || new Date(),
       description,
       note,
-      receipt,
-      tags,
+      receipt: receiptPath, // Save file path
+      tags: parsedTags,
     });
 
     await newTransaction.save({ session });
@@ -135,7 +157,9 @@ const createTransaction = async (req, res) => {
 const getTransactions = async (req, res) => {
   try {
     const { id } = req.user;
-    const transactions = await Transaction.find({ userId: id });
+    const transactions = await Transaction.find({ userId: id }).sort({
+      createdAt: -1,
+    });
     res.status(200).json({
       message: "Transactions fetched successfully",
       data: transactions,
@@ -153,7 +177,11 @@ const getTransactions = async (req, res) => {
 const getTransactionById = async (req, res) => {
   try {
     const { id } = req.user;
-    const transaction = await Transaction.findById(id);
+    const { transactionId } = req.params;
+    const transaction = await Transaction.findOne({
+      _id: transactionId,
+      userId: id,
+    });
     if (!transaction) {
       return res.status(404).json({ message: "Transaction not found" });
     }
@@ -175,20 +203,28 @@ const updateTransaction = async (req, res) => {
   const session = await mongoose.startSession();
   session.startTransaction();
   try {
+    console.log("Request Body:", req.body);
+    console.log("Uploaded File:", req.file); // Multer adds this
+
     const { id } = req.user;
 
     const {
       title,
-      amount,
+      // amount,
       type,
       category,
       transactionDate,
       description,
       note,
-      receipt,
+      paymentMethod,
       tags,
     } = req.body;
     const { transactionId } = req.params;
+    const amount = parseFloat(req.body.amount);
+
+    // Get receipt path from uploaded file
+    const receiptPath = req.file ? req.file.path : null;
+    // Or use relative path: req.file ? `/uploads/receipts/${req.file.filename}` : null;
 
     // Find transaction first
     const transaction = await Transaction.findById(transactionId).session(
@@ -214,6 +250,7 @@ const updateTransaction = async (req, res) => {
     const newAmount = amount !== undefined ? amount : transaction.amount;
     const newType = type || transaction.type;
     const newCategory = category || transaction.category;
+    const newPaymentMethod = paymentMethod || transaction.paymentMethod;
 
     // Validation on new values
     if (!newTitle) {
@@ -313,8 +350,9 @@ const updateTransaction = async (req, res) => {
     transaction.description =
       description !== undefined ? description : transaction.description;
     transaction.note = note !== undefined ? note : transaction.note;
-    transaction.receipt = receipt !== undefined ? receipt : transaction.receipt;
+    transaction.receipt = receiptPath;
     transaction.tags = tags !== undefined ? tags : transaction.tags;
+    transaction.paymentMethod = paymentMethod;
 
     await transaction.save({ session });
 
