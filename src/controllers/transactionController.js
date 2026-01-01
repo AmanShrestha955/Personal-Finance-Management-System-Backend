@@ -12,9 +12,8 @@ const createTransaction = async (req, res) => {
 
     const {
       title,
-      amount,
+      // amount,
       type,
-      accountId,
       category,
       paymentMethod,
       transactionDate,
@@ -23,6 +22,7 @@ const createTransaction = async (req, res) => {
       tags,
     } = req.body;
     const { id } = req.user;
+    const amount = parseFloat(req.body.amount);
 
     // Parse tags if sent as JSON string
     let parsedTags = [];
@@ -39,11 +39,10 @@ const createTransaction = async (req, res) => {
     // Or use relative path: req.file ? `/uploads/receipts/${req.file.filename}` : null;
 
     // Validation
-    if (!amount || !type || !accountId || !category || !paymentMethod) {
+    if (!amount || !type || !category || !paymentMethod) {
       await session.abortTransaction();
       return res.status(400).json({
-        message:
-          "Amount, type, accountId, category, and paymentMethod are required",
+        message: "Amount, type, category, and paymentMethod are required",
       });
     }
     if (!title) {
@@ -65,16 +64,10 @@ const createTransaction = async (req, res) => {
       });
     }
 
-    const account = await Account.findById(accountId).session(session);
+    const account = await Account.findOne({ userId: id }).session(session);
     if (!account) {
       await session.abortTransaction();
       return res.status(404).json({ message: "Account not found" });
-    }
-    if (account.userId.toString() !== id) {
-      await session.abortTransaction();
-      return res
-        .status(403)
-        .json({ message: "You are not authorized to access this account" });
     }
 
     // Check for sufficient balance for expenses
@@ -87,7 +80,7 @@ const createTransaction = async (req, res) => {
 
     const newTransaction = new Transaction({
       userId: id,
-      accountId,
+      accountId: account._id,
       title,
       amount,
       type,
@@ -210,7 +203,7 @@ const updateTransaction = async (req, res) => {
 
     const {
       title,
-      // amount,
+      amount,
       type,
       category,
       transactionDate,
@@ -220,7 +213,6 @@ const updateTransaction = async (req, res) => {
       tags,
     } = req.body;
     const { transactionId } = req.params;
-    const amount = parseFloat(req.body.amount);
 
     // Get receipt path from uploaded file
     const receiptPath = req.file ? req.file.path : null;
@@ -275,9 +267,7 @@ const updateTransaction = async (req, res) => {
       });
     }
 
-    const account = await Account.findById(transaction.accountId).session(
-      session
-    );
+    const account = await Account.findOne({ userId: id }).session(session);
     if (!account) {
       await session.abortTransaction();
       session.endSession();
