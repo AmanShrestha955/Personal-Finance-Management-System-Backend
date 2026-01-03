@@ -437,10 +437,100 @@ const deleteTransaction = async (req, res) => {
   }
 };
 
+const getTotalSpendByDateRange = async (req, res) => {
+  try {
+    const { id } = req.user;
+    const { startDate, endDate, category } = req.query;
+
+    // Validation
+    if (!startDate || !endDate) {
+      return res.status(400).json({
+        message: "Both startDate and endDate are required",
+      });
+    }
+
+    // Parse dates
+    const start = new Date(startDate);
+    const end = new Date(endDate);
+
+    // Set end date to end of day
+    end.setHours(23, 59, 59, 999);
+
+    // Validate dates
+    if (isNaN(start.getTime()) || isNaN(end.getTime())) {
+      return res.status(400).json({
+        message: "Invalid date format",
+      });
+    }
+
+    if (start > end) {
+      return res.status(400).json({
+        message: "Start date must be before or equal to end date",
+      });
+    }
+
+    // Build match condition
+    const matchCondition = {
+      userId: new mongoose.Types.ObjectId(id),
+      type: "expense",
+      createdAt: {
+        $gte: start,
+        $lte: end,
+      },
+    };
+
+    // Add category filter if provided
+    if (category) {
+      matchCondition.category = category;
+    }
+
+    // Aggregate total spend for expenses only
+    const result = await Transaction.aggregate([
+      {
+        $match: matchCondition,
+      },
+      {
+        $group: {
+          _id: null,
+          totalSpend: { $sum: "$amount" },
+          transactionCount: { $sum: 1 },
+        },
+      },
+    ]);
+
+    const totalSpend = result.length > 0 ? result[0].totalSpend : 0;
+    const transactionCount = result.length > 0 ? result[0].transactionCount : 0;
+
+    const responseData = {
+      startDate: start,
+      endDate: end,
+      totalSpend: totalSpend,
+      transactionCount: transactionCount,
+    };
+
+    // Include category in response if filtered
+    if (category) {
+      responseData.category = category;
+    }
+
+    res.status(200).json({
+      message: "Total spend calculated successfully",
+      data: responseData,
+    });
+  } catch (error) {
+    console.log(error);
+    res.status(500).json({
+      message: "Failed to calculate total spend",
+      error: error.message,
+    });
+  }
+};
+
 module.exports = {
   createTransaction,
   getTransactionById,
   getTransactions,
   updateTransaction,
   deleteTransaction,
+  getTotalSpendByDateRange,
 };

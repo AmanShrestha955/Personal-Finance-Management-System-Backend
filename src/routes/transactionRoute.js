@@ -4,6 +4,7 @@ const {
   getTransactions,
   updateTransaction,
   deleteTransaction,
+  getTotalSpendByDateRange,
 } = require("../controllers/transactionController.js");
 const { Router } = require("express");
 const authMiddleware = require("../middlewares/authMiddlewares.js");
@@ -30,5 +31,17 @@ transactionRouter.put(
   updateTransaction
 );
 transactionRouter.delete("/:transactionId", authMiddleware, deleteTransaction);
+transactionRouter.get(
+  "/analytics/total-spend",
+  authMiddleware,
+  getTotalSpendByDateRange
+);
+// **Usage:**
+
+// 1. **Total spend for all categories:**
+// GET /transactions/analytics/total-spend?startDate=2025-01-01&endDate=2025-01-30
+
+// 2. **Total spend for specific category:**
+// GET /transactions/analytics/total-spend?startDate=2025-01-01&endDate=2025-01-30&category=Food
 
 module.exports = transactionRouter;
