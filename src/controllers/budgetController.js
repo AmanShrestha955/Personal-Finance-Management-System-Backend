@@ -1,23 +1,71 @@
 const Budget = require("../models/budgetModels.js");
+const Transaction = require("../models/transactionModels.js");
 
 const createBudget = async (req, res) => {
   try {
     console.log("budget is created.");
     const { category, budgetAmount, alertThreshold } = req.body;
     const { id } = req.user;
+
+    // Get the start and end of the current month
+    const currentMonth = new Date();
+    const startOfMonth = new Date(
+      currentMonth.getFullYear(),
+      currentMonth.getMonth(),
+      1
+    );
+    const endOfMonth = new Date(
+      currentMonth.getFullYear(),
+      currentMonth.getMonth() + 1,
+      0,
+      23,
+      59,
+      59,
+      999
+    );
+
+    // Calculate spent amount using aggregation
+    const result = await Transaction.aggregate([
+      {
+        $match: {
+          userId: id,
+          category: category,
+          type: "expense",
+          transactionDate: {
+            $gte: startOfMonth,
+            $lte: endOfMonth,
+          },
+        },
+      },
+      {
+        $group: {
+          _id: null,
+          totalSpent: { $sum: "$amount" },
+        },
+      },
+    ]);
+
+    const spentAmount = result.length > 0 ? result[0].totalSpent : 0;
+
     const budget = new Budget({
       userId: id,
       category: category,
       budgetAmount: budgetAmount,
       alertThreshold: alertThreshold,
+      spentAmount: spentAmount,
+      month: startOfMonth,
     });
+
     const savedBudget = await budget.save();
+
     if (!savedBudget) {
       return res.status(500).json({ message: "Failed to create Budget." });
     }
+
     return res.status(201).json({
       message: "Budget created Successfully",
       data: savedBudget,
+      calculatedSpent: spentAmount,
     });
   } catch (error) {
     console.log(error);
@@ -67,6 +115,32 @@ const getBudgets = async (req, res) => {
     console.log(error);
     res.status(500).json({
       message: "Fetching Budgets failed. error in getBudgets function",
+      error: error.message,
+    });
+  }
+};
+
+const getBudgetById = async (req, res) => {
+  try {
+    const { id } = req.user;
+    const { budgetId } = req.params;
+
+    const budget = await Budget.findOne({ _id: budgetId, userId: id });
+
+    if (!budget) {
+      return res.status(404).json({
+        message: "Budget not found or you're not authorized to view it",
+      });
+    }
+
+    res.status(200).json({
+      message: "Budget fetched successfully",
+      data: budget,
+    });
+  } catch (error) {
+    console.log(error);
+    res.status(500).json({
+      message: "Fetching Budget failed. error in getBudgetById function",
       error: error.message,
     });
   }
@@ -146,4 +220,5 @@ module.exports = {
   getBudgets,
   updateBudget,
   deleteBudget,
+  getBudgetById,
 };
