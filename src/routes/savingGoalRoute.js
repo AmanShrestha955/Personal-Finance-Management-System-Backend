@@ -6,27 +6,23 @@ const {
   updateSavingGoal,
   updateSavingProgress,
   deleteSavingGoal,
+  getSavingGoalStats,
 } = require("../controllers/savingGoalController.js");
 const { Router } = require("express");
 const authMiddleware = require("../middlewares/authMiddlewares.js");
 const savingGoalRouter = Router();
 
-console.log("Saving Goal Route has been loaded");
-
 savingGoalRouter.post("/", authMiddleware, createSavingGoal);
 savingGoalRouter.get("/", authMiddleware, getSavingGoals);
+savingGoalRouter.get("/stats", authMiddleware, getSavingGoalStats);
 savingGoalRouter.get(
   "/category/:category",
   authMiddleware,
-  getSavingGoalByCategory
+  getSavingGoalByCategory,
 );
 savingGoalRouter.get("/:goalId", authMiddleware, getSavingGoalById);
 savingGoalRouter.put("/:goalId", authMiddleware, updateSavingGoal);
-savingGoalRouter.patch(
-  "/:goalId/progress",
-  authMiddleware,
-  updateSavingProgress
-);
+savingGoalRouter.put("/:goalId/progress", authMiddleware, updateSavingProgress);
 savingGoalRouter.delete("/:goalId", authMiddleware, deleteSavingGoal);
 
 module.exports = savingGoalRouter;

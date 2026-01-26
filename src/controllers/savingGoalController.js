@@ -1,4 +1,6 @@
 const SavingGoal = require("../models/savingGoalModels.js");
+const Account = require("../models/accountModels.js");
+const mongoose = require("mongoose");
 
 console.log("Saving Goal Controller has been loaded...");
 
@@ -16,6 +18,7 @@ const createSavingGoal = async (req, res) => {
       currentSaving: currentSaving || 0,
       deadline: deadline,
       category: category,
+      isCompleted: currentSaving >= targetAmount ? true : false,
     });
 
     const savedGoal = await savingGoal.save();
@@ -178,32 +181,54 @@ const updateSavingGoal = async (req, res) => {
 };
 
 const updateSavingProgress = async (req, res) => {
+  const session = await mongoose.startSession();
+  session.startTransaction();
   try {
     const { id } = req.user;
     const { amount } = req.body;
     const { goalId } = req.params;
+    console.log("Updating saving progress with amount:", amount);
 
     if (amount === undefined || amount === null) {
+      session.abortTransaction();
+      session.endSession();
       return res.status(400).json({
         message: "Amount is required",
       });
     }
 
-    const savingGoal = await SavingGoal.findById(goalId);
+    const balance = await Account.findOne({ userId: id }).session(session);
+
+    if (!balance || balance.balance < amount) {
+      session.abortTransaction();
+      session.endSession();
+      return res.status(400).json({
+        message: "Insufficient account balance",
+      });
+    }
+
+    const savingGoal = await SavingGoal.findById(goalId).session(session);
 
     if (!savingGoal) {
+      session.abortTransaction();
+      session.endSession();
       return res.status(404).json({ message: "Saving Goal not found" });
     }
 
     if (savingGoal.userId.toString() !== id) {
+      session.abortTransaction();
+      session.endSession();
       return res.status(403).json({
         message: "You are not authorized to update this saving goal",
       });
     }
 
     savingGoal.currentSaving += amount;
+    balance.balance -= amount;
 
     if (savingGoal.currentSaving < 0) {
+      session.abortTransaction();
+      session.endSession();
       return res.status(400).json({
         message: "Current saving cannot be negative",
       });
@@ -214,7 +239,10 @@ const updateSavingProgress = async (req, res) => {
       savingGoal.isCompleted = true;
     }
 
-    await savingGoal.save();
+    await savingGoal.save({ session });
+    await balance.save({ session });
+
+    await session.commitTransaction();
 
     res.status(200).json({
       message: "Saving progress updated successfully",
@@ -226,6 +254,8 @@ const updateSavingProgress = async (req, res) => {
       message: "Update progress failed. Error in updateSavingProgress function",
       error: error.message,
     });
+  } finally {
+    session.endSession();
   }
 };
 
@@ -257,6 +287,126 @@ const deleteSavingGoal = async (req, res) => {
   }
 };
 
+const getSavingGoalStats = async (req, res) => {
+  try {
+    const { id } = req.user;
+
+    // Get current month date range
+    const now = new Date();
+    const currentMonthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+    const currentMonthEnd = new Date(
+      now.getFullYear(),
+      now.getMonth() + 1,
+      0,
+      23,
+      59,
+      59,
+    );
+
+    // Get previous month date range
+    const previousMonthStart = new Date(
+      now.getFullYear(),
+      now.getMonth() - 1,
+      1,
+    );
+    const previousMonthEnd = new Date(
+      now.getFullYear(),
+      now.getMonth(),
+      0,
+      23,
+      59,
+      59,
+    );
+
+    // Current month stats
+    const currentGoals = await SavingGoal.find({
+      userId: id,
+      createdAt: { $lte: currentMonthEnd },
+    });
+
+    const totalSaved = currentGoals.reduce(
+      (sum, goal) => sum + goal.currentSaving,
+      0,
+    );
+    const totalGoals = currentGoals.length;
+    const completedGoals = currentGoals.filter(
+      (goal) => goal.isCompleted,
+    ).length;
+
+    // Previous month stats
+    const previousGoals = await SavingGoal.find({
+      userId: id,
+      createdAt: { $lte: previousMonthEnd },
+    });
+
+    const previousTotalSaved = previousGoals.reduce(
+      (sum, goal) => sum + goal.currentSaving,
+      0,
+    );
+    const previousCompletedGoals = previousGoals.filter(
+      (goal) => goal.isCompleted,
+    ).length;
+
+    // Calculate percentage changes
+    const totalSavedChange =
+      previousTotalSaved !== 0
+        ? (
+            ((totalSaved - previousTotalSaved) / previousTotalSaved) *
+            100
+          ).toFixed(1)
+        : 0;
+
+    const totalSavedDifference = totalSaved - previousTotalSaved;
+
+    // Get account balance
+    const account = await Account.findOne({ userId: id });
+    const remainingBalance = account ? account.balance : 0;
+
+    // For remaining balance percentage, we need to compare with previous month's balance
+    // You might want to store historical balance data, but for now we'll calculate based on difference
+    const remainingBalanceChange =
+      previousTotalSaved !== 0
+        ? (
+            ((remainingBalance -
+              (account ? account.balance - totalSavedDifference : 0)) /
+              previousTotalSaved) *
+            100
+          ).toFixed(1)
+        : 0;
+
+    const remainingBalanceDifference = totalSavedDifference; // Simplified calculation
+
+    res.status(200).json({
+      message: "Saving goal statistics fetched successfully",
+      data: {
+        totalSaved: {
+          amount: totalSaved,
+          percentageChange: parseFloat(totalSavedChange),
+          difference: totalSavedDifference,
+        },
+        totalGoals: {
+          count: totalGoals,
+        },
+        completedGoals: {
+          count: completedGoals,
+        },
+        remainingBalance: {
+          amount: remainingBalance,
+          percentageChange: parseFloat(remainingBalanceChange),
+          difference: remainingBalanceDifference,
+        },
+      },
+    });
+  } catch (error) {
+    console.log(error);
+    res.status(500).json({
+      message:
+        "Fetching statistics failed. Error in getSavingGoalStats function",
+      error: error.message,
+    });
+  }
+};
+
 module.exports = {
   createSavingGoal,
   getSavingGoals,
@@ -265,4 +415,5 @@ module.exports = {
   updateSavingGoal,
   updateSavingProgress,
   deleteSavingGoal,
+  getSavingGoalStats,
 };
