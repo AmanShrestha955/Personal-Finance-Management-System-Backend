@@ -5,6 +5,7 @@ const {
   updateTransaction,
   deleteTransaction,
   getTotalSpendByDateRange,
+  getRecentMonthTransactions,
 } = require("../controllers/transactionController.js");
 const { Router } = require("express");
 const authMiddleware = require("../middlewares/authMiddlewares.js");
@@ -19,7 +20,17 @@ transactionRouter.post(
   authMiddleware,
   uploadSingleReceipt,
   handleUploadError,
-  createTransaction
+  createTransaction,
+);
+transactionRouter.get(
+  "/analytics/total-spend",
+  authMiddleware,
+  getTotalSpendByDateRange,
+);
+transactionRouter.get(
+  "/recent-month",
+  authMiddleware,
+  getRecentMonthTransactions,
 );
 transactionRouter.get("/:transactionId", authMiddleware, getTransactionById);
 transactionRouter.get("/", authMiddleware, getTransactions);
@@ -28,14 +39,9 @@ transactionRouter.put(
   authMiddleware,
   uploadSingleReceipt,
   handleUploadError,
-  updateTransaction
+  updateTransaction,
 );
 transactionRouter.delete("/:transactionId", authMiddleware, deleteTransaction);
-transactionRouter.get(
-  "/analytics/total-spend",
-  authMiddleware,
-  getTotalSpendByDateRange
-);
 // **Usage:**
 
 // 1. **Total spend for all categories:**

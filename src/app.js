@@ -7,6 +7,7 @@ const transactionRouter = require("./routes/transactionRoute.js");
 const accountRouter = require("./routes/accountRoute.js");
 const budgetRouter = require("./routes/budgetRoute.js");
 const savingGoalRouter = require("./routes/savingGoalRoute.js");
+const statsRouter = require("./routes/statsRoute.js");
 
 connectDB();
 
@@ -24,5 +25,6 @@ app.use("/api/transactions", transactionRouter);
 app.use("/api/accounts", accountRouter);
 app.use("/api/budgets", budgetRouter);
 app.use("/api/savingGoals", savingGoalRouter);
+app.use("/api/stats", statsRouter);
 
 module.exports = app;

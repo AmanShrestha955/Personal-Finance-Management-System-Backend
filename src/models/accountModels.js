@@ -12,8 +12,16 @@ const AccountSchema = new Schema(
       required: true,
       default: 0,
     },
+    income: {
+      type: Number,
+      default: 0,
+    },
+    expenses: {
+      type: Number,
+      default: 0,
+    },
   },
-  { timestamps: true }
+  { timestamps: true },
 );
 
 const Account = model("Account", AccountSchema);

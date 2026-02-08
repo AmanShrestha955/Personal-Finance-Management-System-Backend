@@ -1,5 +1,6 @@
 const SavingGoal = require("../models/savingGoalModels.js");
 const Account = require("../models/accountModels.js");
+const Saving = require("../models/savingModel.js");
 const mongoose = require("mongoose");
 
 console.log("Saving Goal Controller has been loaded...");
@@ -190,44 +191,75 @@ const updateSavingProgress = async (req, res) => {
     console.log("Updating saving progress with amount:", amount);
 
     if (amount === undefined || amount === null) {
-      session.abortTransaction();
+      await session.abortTransaction();
       session.endSession();
       return res.status(400).json({
         message: "Amount is required",
       });
     }
 
-    const balance = await Account.findOne({ userId: id }).session(session);
-
-    if (!balance || balance.balance < amount) {
-      session.abortTransaction();
+    if (amount === 0) {
+      await session.abortTransaction();
       session.endSession();
       return res.status(400).json({
-        message: "Insufficient account balance",
+        message: "Amount cannot be zero",
       });
     }
 
     const savingGoal = await SavingGoal.findById(goalId).session(session);
 
     if (!savingGoal) {
-      session.abortTransaction();
+      await session.abortTransaction();
       session.endSession();
       return res.status(404).json({ message: "Saving Goal not found" });
     }
 
     if (savingGoal.userId.toString() !== id) {
-      session.abortTransaction();
+      await session.abortTransaction();
       session.endSession();
       return res.status(403).json({
         message: "You are not authorized to update this saving goal",
       });
     }
 
-    savingGoal.currentSaving += amount;
-    balance.balance -= amount;
+    const balance = await Account.findOne({ userId: id }).session(session);
+
+    // Determine transaction type
+    let transactionType;
+
+    if (amount > 0) {
+      // Adding to savings
+      transactionType = "add";
+
+      if (!balance || balance.balance < amount) {
+        await session.abortTransaction();
+        session.endSession();
+        return res.status(400).json({
+          message: "Insufficient account balance",
+        });
+      }
+
+      savingGoal.currentSaving += amount;
+      balance.balance -= amount;
+    } else {
+      // Withdrawing from savings (negative amount)
+      transactionType = "withdraw";
+      const withdrawAmount = Math.abs(amount);
+
+      if (savingGoal.currentSaving < withdrawAmount) {
+        await session.abortTransaction();
+        session.endSession();
+        return res.status(400).json({
+          message: "Insufficient saving balance",
+        });
+      }
+
+      savingGoal.currentSaving -= withdrawAmount;
+      balance.balance += withdrawAmount;
+    }
 
     if (savingGoal.currentSaving < 0) {
-      session.abortTransaction();
+      await session.abortTransaction();
       session.endSession();
       return res.status(400).json({
         message: "Current saving cannot be negative",
@@ -237,18 +269,34 @@ const updateSavingProgress = async (req, res) => {
     // Check if goal is completed
     if (savingGoal.currentSaving >= savingGoal.targetAmount) {
       savingGoal.isCompleted = true;
+    } else {
+      savingGoal.isCompleted = false;
     }
+
+    // Create transaction record
+    const savingTransaction = new Saving({
+      userId: id,
+      savingGoalId: goalId,
+      amount: Math.abs(amount),
+      transactionType: transactionType,
+      balanceAfter: savingGoal.currentSaving,
+    });
 
     await savingGoal.save({ session });
     await balance.save({ session });
+    await savingTransaction.save({ session });
 
     await session.commitTransaction();
 
     res.status(200).json({
       message: "Saving progress updated successfully",
-      data: savingGoal,
+      data: {
+        savingGoal: savingGoal,
+        transaction: savingTransaction,
+      },
     });
   } catch (error) {
+    await session.abortTransaction();
     console.log(error);
     res.status(500).json({
       message: "Update progress failed. Error in updateSavingProgress function",

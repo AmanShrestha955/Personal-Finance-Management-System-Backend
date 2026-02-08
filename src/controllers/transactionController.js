@@ -111,8 +111,10 @@ const createTransaction = async (req, res) => {
 
     if (type === "income") {
       account.balance += amount;
+      account.income += amount;
     } else if (type === "expense") {
       account.balance -= amount;
+      account.expenses += amount;
     }
 
     await account.save({ session });
@@ -219,9 +221,8 @@ const updateTransaction = async (req, res) => {
     // Or use relative path: req.file ? `/uploads/receipts/${req.file.filename}` : null;
 
     // Find transaction first
-    const transaction = await Transaction.findById(transactionId).session(
-      session
-    );
+    const transaction =
+      await Transaction.findById(transactionId).session(session);
 
     if (!transaction) {
       await session.abortTransaction();
@@ -280,19 +281,24 @@ const updateTransaction = async (req, res) => {
     // Reverse old transaction effect
     if (transaction.type === "income") {
       balanceChange -= transaction.amount; // Remove old income
+      account.income -= transaction.amount;
     } else if (transaction.type === "expense") {
       balanceChange += transaction.amount; // Reverse old expense
+      account.expenses -= transaction.amount;
     }
 
     // Apply new transaction effect
     if (newType === "income") {
       balanceChange += newAmount;
+      account.income += newAmount;
     } else if (newType === "expense") {
       balanceChange -= newAmount;
+      account.expenses += newAmount;
     }
 
     // Check for sufficient balance
     const projectedBalance = account.balance + balanceChange;
+
     if (projectedBalance < 0) {
       await session.abortTransaction();
       session.endSession();
@@ -375,9 +381,8 @@ const deleteTransaction = async (req, res) => {
     const { id } = req.user;
     const { transactionId } = req.params;
 
-    const transaction = await Transaction.findById(transactionId).session(
-      session
-    );
+    const transaction =
+      await Transaction.findById(transactionId).session(session);
 
     if (!transaction) {
       await session.abortTransaction();
@@ -392,7 +397,7 @@ const deleteTransaction = async (req, res) => {
     }
 
     const account = await Account.findById(transaction.accountId).session(
-      session
+      session,
     );
     if (!account) {
       await session.abortTransaction();
@@ -400,8 +405,10 @@ const deleteTransaction = async (req, res) => {
     }
     if (transaction.type === "income") {
       account.balance -= transaction.amount;
+      account.income -= transaction.amount;
     } else if (transaction.type === "expense") {
       account.balance += transaction.amount;
+      account.expenses -= transaction.amount;
     }
 
     if (transaction.type === "expense") {
@@ -526,6 +533,33 @@ const getTotalSpendByDateRange = async (req, res) => {
   }
 };
 
+const getRecentMonthTransactions = async (req, res) => {
+  try {
+    const { id } = req.user;
+    const currentDate = new Date();
+    const pastMonthDate = new Date();
+    pastMonthDate.setMonth(currentDate.getMonth() - 1);
+
+    const transaction = await Transaction.find({
+      userId: id,
+      transactionDate: { $gte: pastMonthDate, $lte: currentDate },
+    }).sort({
+      createdAt: -1,
+    });
+    res.status(200).json({
+      message: "Transactions fetched successfully",
+      data: transaction,
+    });
+  } catch (error) {
+    console.log(error);
+    res.status(500).json({
+      message:
+        "Fetching transactions failed. error in getTransactionsByTransactionDate function",
+      error: error.message,
+    });
+  }
+};
+
 module.exports = {
   createTransaction,
   getTransactionById,
@@ -533,4 +567,5 @@ module.exports = {
   updateTransaction,
   deleteTransaction,
   getTotalSpendByDateRange,
+  getRecentMonthTransactions,
 };
