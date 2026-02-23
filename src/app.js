@@ -8,6 +8,8 @@ const accountRouter = require("./routes/accountRoute.js");
 const budgetRouter = require("./routes/budgetRoute.js");
 const savingGoalRouter = require("./routes/savingGoalRoute.js");
 const statsRouter = require("./routes/statsRoute.js");
+const userRouter = require("./routes/userRoute.js");
+const recurringTransactionRouter = require("./routes/RecurringTransactionRoute.js");
 
 connectDB();
 
@@ -20,11 +22,13 @@ app.get("/home", (req, res) => {
   res.json({ message: "API is running... Hello world" });
 });
 
+app.use("/api/users", userRouter);
 app.use("/api/auth", authRouter);
 app.use("/api/transactions", transactionRouter);
 app.use("/api/accounts", accountRouter);
 app.use("/api/budgets", budgetRouter);
 app.use("/api/savingGoals", savingGoalRouter);
 app.use("/api/stats", statsRouter);
+app.use("/api/recurring-transactions", recurringTransactionRouter);
 
 module.exports = app;

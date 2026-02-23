@@ -18,6 +18,20 @@ const UserSchema = new Schema(
       required: true,
       trim: true,
     },
+    phoneNumber: {
+      type: String,
+      trim: true,
+      default: null,
+    },
+    gender: {
+      type: String,
+      enum: ["male", "female"],
+      default: null,
+    },
+    photo: {
+      type: String, // stores URL or file path to the user's profile photo
+      default: null,
+    },
     provider: {
       type: String,
       enum: ["local", "google"],
@@ -40,7 +54,7 @@ const UserSchema = new Schema(
     passwordResetToken: String,
     passwordResetExpires: Date,
   },
-  { timestamps: true }
+  { timestamps: true },
 );
 
 const User = model("User", UserSchema);

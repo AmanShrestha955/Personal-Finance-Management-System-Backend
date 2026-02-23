@@ -9,6 +9,7 @@
     "mongoose": "^8.19.2",
     "multer": "^2.0.2",
     "node": "^25.1.0",
+    "node-cron": "^4.2.1",
     "nodemailer": "^7.0.10"
   },
   "name": "backend",

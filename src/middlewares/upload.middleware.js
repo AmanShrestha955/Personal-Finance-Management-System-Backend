@@ -3,6 +3,7 @@ const multer = require("multer");
 
 // Middleware for single file upload
 const uploadSingleReceipt = upload.single("receipt");
+const uploadUserPhoto = upload.single("photo");
 
 // Middleware with error handling
 const handleUploadError = (err, req, res, next) => {
@@ -26,5 +27,6 @@ const handleUploadError = (err, req, res, next) => {
 
 module.exports = {
   uploadSingleReceipt,
+  uploadUserPhoto,
   handleUploadError,
 };

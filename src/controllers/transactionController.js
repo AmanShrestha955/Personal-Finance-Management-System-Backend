@@ -2,17 +2,15 @@ const Transaction = require("../models/transactionModels.js");
 const Budget = require("../models/budgetModels.js");
 const Account = require("../models/accountModels.js");
 const mongoose = require("mongoose");
+const { createTransactionCore } = require("../services/transactionServices.js");
 
 const createTransaction = async (req, res) => {
-  const session = await mongoose.startSession();
-  session.startTransaction();
   try {
     console.log("Request Body:", req.body);
-    console.log("Uploaded File:", req.file); // Multer adds this
+    console.log("Uploaded File:", req.file);
 
     const {
       title,
-      // amount,
       type,
       category,
       paymentMethod,
@@ -21,6 +19,7 @@ const createTransaction = async (req, res) => {
       note,
       tags,
     } = req.body;
+
     const { id } = req.user;
     const amount = parseFloat(req.body.amount);
 
@@ -29,58 +28,16 @@ const createTransaction = async (req, res) => {
     if (tags) {
       try {
         parsedTags = typeof tags === "string" ? JSON.parse(tags) : tags;
-      } catch (e) {
+      } catch {
         parsedTags = [];
       }
     }
 
-    // Get receipt path from uploaded file
     const receiptPath = req.file ? req.file.path : null;
-    // Or use relative path: req.file ? `/uploads/receipts/${req.file.filename}` : null;
 
-    // Validation
-    if (!amount || !type || !category || !paymentMethod) {
-      await session.abortTransaction();
-      return res.status(400).json({
-        message: "Amount, type, category, and paymentMethod are required",
-      });
-    }
-    if (!title) {
-      await session.abortTransaction();
-      return res.status(400).json({
-        message: "Title is required",
-      });
-    }
-    if (amount <= 0) {
-      await session.abortTransaction();
-      return res.status(400).json({
-        message: "Amount must be positive",
-      });
-    }
-    if (!["income", "expense"].includes(type)) {
-      await session.abortTransaction();
-      return res.status(400).json({
-        message: "Type must be either 'income' or 'expense'",
-      });
-    }
-
-    const account = await Account.findOne({ userId: id }).session(session);
-    if (!account) {
-      await session.abortTransaction();
-      return res.status(404).json({ message: "Account not found" });
-    }
-
-    // Check for sufficient balance for expenses
-    if (type === "expense" && account.balance < amount) {
-      await session.abortTransaction();
-      return res.status(400).json({
-        message: "Insufficient account balance",
-      });
-    }
-
-    const newTransaction = new Transaction({
+    // Delegate all business logic to the shared service
+    const result = await createTransactionCore({
       userId: id,
-      accountId: account._id,
       title,
       amount,
       type,
@@ -88,64 +45,32 @@ const createTransaction = async (req, res) => {
       paymentMethod,
       transactionDate: transactionDate || new Date(),
       description,
-      note,
-      receipt: receiptPath, // Save file path
+      receiptPath,
       tags: parsedTags,
+      note,
     });
-
-    await newTransaction.save({ session });
-
-    // Update budget only for expenses
-    let updatedBudget = null;
-    if (type === "expense") {
-      const budget = await Budget.findOne({
-        userId: id,
-        category: category,
-      }).session(session);
-      if (budget) {
-        budget.spentAmount += amount;
-        await budget.save({ session });
-        updatedBudget = budget;
-      }
-    }
-
-    if (type === "income") {
-      account.balance += amount;
-      account.income += amount;
-    } else if (type === "expense") {
-      account.balance -= amount;
-      account.expenses += amount;
-    }
-
-    await account.save({ session });
-
-    // Build response object
-    const responseData = {
-      transaction: newTransaction,
-      account: account,
-    };
-
-    // Only include budget if it was updated
-    if (updatedBudget) {
-      responseData.budget = updatedBudget;
-    }
-
-    await session.commitTransaction();
 
     res.status(201).json({
       message: "Transaction created successfully",
-      data: responseData,
+      data: result,
     });
   } catch (error) {
-    await session.abortTransaction();
     console.log(error);
-    res.status(500).json({
-      message:
-        "Transaction creation failed. error in createTransaction function",
-      error: error.message,
+
+    // Surface validation errors as 400, everything else as 500
+    const isValidationError = [
+      "Title is required",
+      "Amount must be positive",
+      "Type must be 'income' or 'expense'",
+      "Category is required",
+      "PaymentMethod is required",
+      "Insufficient account balance",
+      "Account not found",
+    ].includes(error.message);
+
+    res.status(isValidationError ? 400 : 500).json({
+      message: error.message,
     });
-  } finally {
-    session.endSession();
   }
 };
 
