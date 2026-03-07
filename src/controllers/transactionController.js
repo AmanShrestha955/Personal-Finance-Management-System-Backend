@@ -3,6 +3,7 @@ const Budget = require("../models/budgetModels.js");
 const Account = require("../models/accountModels.js");
 const mongoose = require("mongoose");
 const { createTransactionCore } = require("../services/transactionServices.js");
+const { warn } = require("node:console");
 
 const createTransaction = async (req, res) => {
   try {
@@ -33,7 +34,7 @@ const createTransaction = async (req, res) => {
       }
     }
 
-    const receiptPath = req.file ? req.file.path : null;
+    const receiptPath = req.file ? req.file.path.replace(/\\/g, "/") : null;
 
     // Delegate all business logic to the shared service
     const result = await createTransactionCore({
@@ -52,6 +53,7 @@ const createTransaction = async (req, res) => {
 
     res.status(201).json({
       message: "Transaction created successfully",
+      warning: result.warning || null,
       data: result,
     });
   } catch (error) {
@@ -123,9 +125,11 @@ const updateTransaction = async (req, res) => {
   const session = await mongoose.startSession();
   session.startTransaction();
   try {
+    let warningMessage = null;
     console.log("Request Body:", req.body);
-    console.log("Uploaded File:", req.file); // Multer adds this
-
+    if (req.file) {
+      console.log("Uploaded File:", req.file); // Multer adds this
+    }
     const { id } = req.user;
 
     const {
@@ -139,11 +143,8 @@ const updateTransaction = async (req, res) => {
       paymentMethod,
       tags,
     } = req.body;
-    const { transactionId } = req.params;
 
-    // Get receipt path from uploaded file
-    const receiptPath = req.file ? req.file.path : null;
-    // Or use relative path: req.file ? `/uploads/receipts/${req.file.filename}` : null;
+    const { transactionId } = req.params;
 
     // Find transaction first
     const transaction =
@@ -163,9 +164,16 @@ const updateTransaction = async (req, res) => {
         .json({ message: "You are not authorized to update this transaction" });
     }
 
+    // Get receipt path from uploaded file
+    const receiptPath = req.file
+      ? req.file.path.replace(/\\/g, "/")
+      : transaction.receipt;
+    // Or use relative path: req.file ? `/uploads/receipts/${req.file.filename}` : transaction.receipt;
+
     // Get new values with fallbacks
     const newTitle = title || transaction.title;
-    const newAmount = amount !== undefined ? amount : transaction.amount;
+    const newAmount =
+      amount !== undefined ? parseFloat(amount) : transaction.amount;
     const newType = type || transaction.type;
     const newCategory = category || transaction.category;
     const newPaymentMethod = paymentMethod || transaction.paymentMethod;
@@ -254,6 +262,13 @@ const updateTransaction = async (req, res) => {
       if (newBudget) {
         newBudget.spentAmount += newAmount;
         await newBudget.save({ session });
+
+        // Check threshold
+        const spentPercentage =
+          (newBudget.spentAmount / newBudget.budgetAmount) * 100;
+        if (spentPercentage >= newBudget.alertThreshold) {
+          warningMessage = `You've used ${spentPercentage.toFixed(0)}% of your ${newCategory} budget.`;
+        }
       }
     }
 
@@ -272,8 +287,13 @@ const updateTransaction = async (req, res) => {
       description !== undefined ? description : transaction.description;
     transaction.note = note !== undefined ? note : transaction.note;
     transaction.receipt = receiptPath;
-    transaction.tags = tags !== undefined ? tags : transaction.tags;
-    transaction.paymentMethod = paymentMethod;
+    transaction.tags =
+      tags !== undefined
+        ? typeof tags === "string"
+          ? JSON.parse(tags)
+          : tags
+        : transaction.tags;
+    transaction.paymentMethod = newPaymentMethod;
 
     await transaction.save({ session });
 
@@ -281,6 +301,7 @@ const updateTransaction = async (req, res) => {
 
     res.status(200).json({
       message: "Transaction updated successfully",
+      warning: warningMessage,
       data: {
         transaction: transaction,
         account: account,

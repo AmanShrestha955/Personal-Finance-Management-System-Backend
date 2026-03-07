@@ -2,6 +2,7 @@ const mongoose = require("mongoose");
 const {
   startRecurringTransactionScheduler,
 } = require("../middlewares/Recurringtransactionscheduler");
+const { startReminderJob } = require("../services/reminderService");
 const connectDB = async () => {
   try {
     if (!process.env.MONGO_URL) {
@@ -10,6 +11,7 @@ const connectDB = async () => {
     }
     await mongoose.connect(process.env.MONGO_URL);
     startRecurringTransactionScheduler();
+    startReminderJob();
     console.log("MongoDB connected successfully");
   } catch (err) {
     console.log("MongoDB connection failed");

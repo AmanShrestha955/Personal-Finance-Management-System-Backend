@@ -12,6 +12,19 @@ const createSavingGoal = async (req, res) => {
       req.body;
     const { id } = req.user;
 
+    // Check active (incomplete) goals count
+    const activeGoalsCount = await SavingGoal.countDocuments({
+      userId: id,
+      isCompleted: false,
+    });
+
+    if (activeGoalsCount >= 3) {
+      return res.status(400).json({
+        message:
+          "Maximum active goals limit reached. You can only have 3 active saving goals at a time. Please complete or remove an existing goal before creating a new one.",
+      });
+    }
+
     const savingGoal = new SavingGoal({
       userId: id,
       goalName: goalName,
@@ -19,7 +32,7 @@ const createSavingGoal = async (req, res) => {
       currentSaving: currentSaving || 0,
       deadline: deadline,
       category: category,
-      isCompleted: currentSaving >= targetAmount ? true : false,
+      isCompleted: currentSaving >= targetAmount,
     });
 
     const savedGoal = await savingGoal.save();

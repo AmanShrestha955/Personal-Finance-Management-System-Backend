@@ -35,7 +35,7 @@ const updateUser = async (req, res) => {
 
     // If a photo file was uploaded, include its path in the update
     if (req.file) {
-      updates.photo = req.file.path;
+      updates.photo = req.file.path.replace(/\\/g, "/");
     }
 
     const user = await User.findByIdAndUpdate(

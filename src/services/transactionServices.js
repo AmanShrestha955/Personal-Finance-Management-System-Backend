@@ -47,6 +47,7 @@ async function createTransactionCore(data) {
   session.startTransaction();
 
   try {
+    let warningMessage = null;
     // --- Validation ---
     if (!title) throw new Error("Title is required");
     if (!amount || amount <= 0) throw new Error("Amount must be positive");
@@ -93,6 +94,13 @@ async function createTransactionCore(data) {
         budget.spentAmount += amount;
         await budget.save({ session });
         updatedBudget = budget;
+
+        // Check threshold
+        const spentPercentage =
+          (budget.spentAmount / budget.budgetAmount) * 100;
+        if (spentPercentage >= budget.alertThreshold) {
+          warningMessage = `Warning: You've used ${spentPercentage.toFixed(0)}% of your ${category} budget.`;
+        }
       }
     }
 
@@ -110,6 +118,7 @@ async function createTransactionCore(data) {
 
     const result = { transaction: newTransaction, account };
     if (updatedBudget) result.budget = updatedBudget;
+    if (warningMessage) result.warning = warningMessage;
     return result;
   } catch (error) {
     await session.abortTransaction();

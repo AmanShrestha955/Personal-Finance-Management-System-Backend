@@ -32,8 +32,12 @@ const SavingGoalSchema = new Schema(
       type: Boolean,
       default: false,
     },
+    reminderEnabled: { type: Boolean, default: true },
+    reminderDay: { type: String, default: "monday" },
+    lastReminderSent: { type: Date, default: null },
+    lastNotificationSent: { type: Date, default: null },
   },
-  { timestamps: true }
+  { timestamps: true },
 );
 
 const SavingGoal = model("SavingGoal", SavingGoalSchema);
