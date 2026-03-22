@@ -53,7 +53,9 @@ const createTransaction = async (req, res) => {
 
     res.status(201).json({
       message: "Transaction created successfully",
+      messageStatus: "success",
       warning: result.warning || null,
+      warningStatus: result.warningStatus || null,
       data: result,
     });
   } catch (error) {
@@ -72,6 +74,7 @@ const createTransaction = async (req, res) => {
 
     res.status(isValidationError ? 400 : 500).json({
       message: error.message,
+      messageStatus: "error",
     });
   }
 };
@@ -125,6 +128,7 @@ const updateTransaction = async (req, res) => {
   const session = await mongoose.startSession();
   session.startTransaction();
   try {
+    let warningStatus = null;
     let warningMessage = null;
     console.log("Request Body:", req.body);
     if (req.file) {
@@ -153,7 +157,9 @@ const updateTransaction = async (req, res) => {
     if (!transaction) {
       await session.abortTransaction();
       session.endSession();
-      return res.status(404).json({ message: "Transaction not found" });
+      return res
+        .status(404)
+        .json({ message: "Transaction not found", messageStatus: "error" });
     }
 
     if (transaction.userId.toString() !== id) {
@@ -161,7 +167,10 @@ const updateTransaction = async (req, res) => {
       session.endSession();
       return res
         .status(403)
-        .json({ message: "You are not authorized to update this transaction" });
+        .json({
+          message: "You are not authorized to update this transaction",
+          messageStatus: "error",
+        });
     }
 
     // Get receipt path from uploaded file
@@ -184,6 +193,7 @@ const updateTransaction = async (req, res) => {
       session.endSession();
       return res.status(400).json({
         message: "Title is required",
+        messageStatus: "error",
       });
     }
     if (newAmount <= 0) {
@@ -191,6 +201,7 @@ const updateTransaction = async (req, res) => {
       session.endSession();
       return res.status(400).json({
         message: "Amount must be positive",
+        messageStatus: "error",
       });
     }
     if (!["income", "expense"].includes(newType)) {
@@ -198,6 +209,7 @@ const updateTransaction = async (req, res) => {
       session.endSession();
       return res.status(400).json({
         message: "Type must be either 'income' or 'expense'",
+        messageStatus: "error",
       });
     }
 
@@ -205,7 +217,9 @@ const updateTransaction = async (req, res) => {
     if (!account) {
       await session.abortTransaction();
       session.endSession();
-      return res.status(404).json({ message: "Account not found" });
+      return res
+        .status(404)
+        .json({ message: "Account not found", messageStatus: "error" });
     }
 
     // Calculate the net effect on account balance
@@ -236,6 +250,7 @@ const updateTransaction = async (req, res) => {
       await session.abortTransaction();
       session.endSession();
       return res.status(400).json({
+        messageStatus: "error",
         message: "Insufficient account balance for this update",
       });
     }
@@ -269,6 +284,10 @@ const updateTransaction = async (req, res) => {
         if (spentPercentage >= newBudget.alertThreshold) {
           warningMessage = `You've used ${spentPercentage.toFixed(0)}% of your ${newCategory} budget.`;
         }
+        if (spentPercentage >= 100) {
+          warningMessage = `You've exceeded your ${newCategory} budget!`;
+          warningStatus = "danger";
+        }
       }
     }
 
@@ -301,7 +320,9 @@ const updateTransaction = async (req, res) => {
 
     res.status(200).json({
       message: "Transaction updated successfully",
+      messageStatus: "success",
       warning: warningMessage,
+      warningStatus: warningStatus,
       data: {
         transaction: transaction,
         account: account,
@@ -311,9 +332,11 @@ const updateTransaction = async (req, res) => {
     await session.abortTransaction();
     console.log(error);
     res.status(500).json({
-      message:
-        "Updating transaction failed. error in updateTransaction function",
+      message: error.message,
+      messageStatus: "error",
       error: error.message,
+      moreInfo:
+        "Updating transaction failed. error in updateTransaction function",
     });
   } finally {
     session.endSession();

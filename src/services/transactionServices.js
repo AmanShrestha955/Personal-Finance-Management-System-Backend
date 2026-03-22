@@ -48,6 +48,7 @@ async function createTransactionCore(data) {
 
   try {
     let warningMessage = null;
+    let warningStatus = null;
     // --- Validation ---
     if (!title) throw new Error("Title is required");
     if (!amount || amount <= 0) throw new Error("Amount must be positive");
@@ -98,8 +99,14 @@ async function createTransactionCore(data) {
         // Check threshold
         const spentPercentage =
           (budget.spentAmount / budget.budgetAmount) * 100;
+
         if (spentPercentage >= budget.alertThreshold) {
-          warningMessage = `Warning: You've used ${spentPercentage.toFixed(0)}% of your ${category} budget.`;
+          warningMessage = `You've used ${spentPercentage.toFixed(0)}% of your ${category} budget.`;
+          warningStatus = "warning";
+        }
+        if (spentPercentage >= 100) {
+          warningMessage = `You've exceeded your ${category} budget!`;
+          warningStatus = "danger";
         }
       }
     }
@@ -118,7 +125,11 @@ async function createTransactionCore(data) {
 
     const result = { transaction: newTransaction, account };
     if (updatedBudget) result.budget = updatedBudget;
-    if (warningMessage) result.warning = warningMessage;
+    if (warningMessage) {
+      result.warning = warningMessage;
+      result.warningStatus = warningStatus;
+    }
+
     return result;
   } catch (error) {
     await session.abortTransaction();

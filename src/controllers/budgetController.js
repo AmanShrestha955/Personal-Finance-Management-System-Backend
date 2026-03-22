@@ -7,12 +7,23 @@ const createBudget = async (req, res) => {
     const { category, budgetAmount, alertThreshold } = req.body;
     const { id } = req.user;
 
+    const existingBudget = await Budget.findOne({
+      userId: id,
+      category: category,
+    });
+    if (existingBudget) {
+      return res.status(400).json({
+        message:
+          "Budget for this category already exists. Please update it instead.",
+      });
+    }
+
     // Get the start and end of the current month
     const currentMonth = new Date();
     const startOfMonth = new Date(
       currentMonth.getFullYear(),
       currentMonth.getMonth(),
-      1
+      1,
     );
     const endOfMonth = new Date(
       currentMonth.getFullYear(),
@@ -21,7 +32,7 @@ const createBudget = async (req, res) => {
       23,
       59,
       59,
-      999
+      999,
     );
 
     // Calculate spent amount using aggregation

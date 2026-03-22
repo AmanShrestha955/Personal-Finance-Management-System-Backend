@@ -11,7 +11,7 @@ const statsRouter = require("./routes/statsRoute.js");
 const userRouter = require("./routes/userRoute.js");
 const recurringTransactionRouter = require("./routes/RecurringTransactionRoute.js");
 const notificationRouter = require("./routes/notificationRoute.js");
-
+const exportRoutes = require("./routes/exportRoute.js");
 connectDB();
 
 const app = express();
@@ -33,5 +33,6 @@ app.use("/api/savingGoals", savingGoalRouter);
 app.use("/api/stats", statsRouter);
 app.use("/api/recurring-transactions", recurringTransactionRouter);
 app.use("/api/notifications", notificationRouter);
+app.use("/api/export", exportRoutes);
 
 module.exports = app;

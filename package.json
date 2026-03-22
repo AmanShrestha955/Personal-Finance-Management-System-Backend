@@ -6,11 +6,14 @@
     "dotenv": "^17.2.3",
     "express": "^5.1.0",
     "jsonwebtoken": "^9.0.2",
+    "jspdf": "^4.2.1",
+    "jspdf-autotable": "^5.0.7",
     "mongoose": "^8.19.2",
     "multer": "^2.0.2",
     "node": "^25.1.0",
     "node-cron": "^4.2.1",
-    "nodemailer": "^7.0.10"
+    "nodemailer": "^7.0.10",
+    "papaparse": "^5.5.3"
   },
   "name": "backend",
   "version": "1.0.0",
