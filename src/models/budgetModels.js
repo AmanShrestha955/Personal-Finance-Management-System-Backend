@@ -5,12 +5,16 @@ const BudgetSchema = new Schema(
     userId: {
       type: Schema.Types.ObjectId,
       ref: "User",
-      required: true,
+      default: null,
+    },
+    familyId: {
+      type: Schema.Types.ObjectId,
+      ref: "Family",
+      default: null,
     },
     category: {
       type: String,
       required: true,
-      unique: true,
     },
     budgetAmount: {
       type: Number,
@@ -44,9 +48,21 @@ const BudgetSchema = new Schema(
       type: Boolean,
       default: true,
     },
+    visibility: {
+      type: String,
+      enum: ["personal", "shared"],
+      default: "personal",
+    },
   },
-  { timestamps: true }
+  { timestamps: true },
 );
+
+BudgetSchema.pre("validate", function (next) {
+  if (!this.userId && !this.familyId) {
+    return next(new Error("A budget must belong to either a user or a family"));
+  }
+  next();
+});
 
 const Budget = model("Budget", BudgetSchema);
 module.exports = Budget;

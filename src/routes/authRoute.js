@@ -4,6 +4,7 @@ const {
   verifyEmail,
   forgotPassword,
   resetPassword,
+  deleteUser,
 } = require("../controllers/authController.js");
 const { SetUp } = require("../controllers/setUpController.js");
 
@@ -17,5 +18,6 @@ authRouter.get("/verify-email/:token", verifyEmail);
 authRouter.post("/setup", authMiddleware, SetUp);
 authRouter.post("/forgot-password", forgotPassword);
 authRouter.post("/reset-password/:token", resetPassword);
+authRouter.delete("/me", authMiddleware, deleteUser);
 
 module.exports = authRouter;

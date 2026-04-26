@@ -32,33 +32,46 @@ const calculateDateRange = (week, month, year) => {
   const now = new Date();
   let startDate;
   let period = "all time";
+  let endDate = new Date(now); // Use a separate endDate
 
   if (week === "1") {
-    // This week (from Monday to now)
+    // This week (from Sunday to Saturday)
     const dayOfWeek = now.getDay();
     startDate = new Date(now);
     startDate.setDate(now.getDate() - dayOfWeek);
+    startDate.setHours(0, 0, 0, 0); // Set to 00:00:00
+    endDate.setHours(23, 59, 59, 999); // Set to 23:59:59.999
     period = "this week";
   } else if (month === "1") {
     // This month
     startDate = new Date(now.getFullYear(), now.getMonth(), 1);
+    startDate.setHours(0, 0, 0, 0); // Set to 00:00:00
+    endDate = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+    endDate.setHours(23, 59, 59, 999); // Set to 23:59:59.999
     period = "this month";
   } else if (month === "3") {
     // Last 3 months
     startDate = new Date(now);
     startDate.setMonth(now.getMonth() - 3);
+    startDate.setHours(0, 0, 0, 0); // Set to 00:00:00
+    endDate.setHours(23, 59, 59, 999); // Set to 23:59:59.999
     period = "last 3 months";
   } else if (month === "6") {
     // Last 6 months
     startDate = new Date(now);
     startDate.setMonth(now.getMonth() - 6);
+    startDate.setHours(0, 0, 0, 0); // Set to 00:00:00
+    endDate.setHours(23, 59, 59, 999); // Set to 23:59:59.999
     period = "last 6 months";
   } else if (year === "1") {
     // This year
     startDate = new Date(now.getFullYear(), 0, 1);
+    startDate.setHours(0, 0, 0, 0); // Set to 00:00:00
+    endDate = new Date(now.getFullYear(), 11, 31);
+    endDate.setHours(23, 59, 59, 999); // Set to 23:59:59.999
     period = "this year";
   }
-  return { startDate, period, now };
+  return { startDate, period, now: endDate };
 };
 
 const getTop5Expenses = async (req, res) => {
@@ -142,6 +155,7 @@ const getAmountByTimePeriodAndType = async (req, res) => {
     const { week, month, year, type } = req.query;
 
     const { startDate, period, now } = calculateDateRange(week, month, year);
+    console.log("startDate: ", startDate, "now: ", now);
 
     let groupFormat = "%Y-%m"; // Default to month grouping
 
@@ -174,11 +188,6 @@ const getAmountByTimePeriodAndType = async (req, res) => {
         $lte: now,
       };
     }
-
-    console.log("start Date:", startDate);
-    console.log("period:", period);
-    console.log("now:", now);
-    console.log("type:", type);
 
     // Aggregate expenses by time period
     const expensesData = await Transaction.aggregate([
@@ -234,10 +243,8 @@ const getAmountByTimePeriodAndType = async (req, res) => {
       const dataMap = new Map(
         expensesData.map((item) => [item.period, item.amount]),
       );
-      console.log("dataMap:", dataMap);
       for (let i = 0; i < weeksInMonth.length; i++) {
         const weekKey = getWeekKey(weeksInMonth[i]);
-        console.log("weekKey:", weekKey);
         formattedData.push({
           week: `week${i + 1}`,
           amount: dataMap.get(weekKey) || 0,
@@ -327,7 +334,7 @@ const getWeeksInMonth = (date) => {
 
   const weeks = [];
   let currentWeekStart = new Date(firstDay);
-  currentWeekStart.setDate(firstDay.getDate() - firstDay.getDay()); // ✅ snap to Sunday
+  currentWeekStart.setDate(firstDay.getDate() - firstDay.getDay());
 
   while (currentWeekStart <= lastDay) {
     weeks.push(new Date(currentWeekStart));
@@ -408,6 +415,7 @@ const getAccountSummary = async (req, res) => {
       {
         $match: {
           userId: new mongoose.Types.ObjectId(id),
+          familyId: null,
           transactionDate: {
             $gte: currentMonthStart,
             $lte: currentMonthEnd,

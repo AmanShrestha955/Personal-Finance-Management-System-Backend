@@ -12,6 +12,8 @@ const userRouter = require("./routes/userRoute.js");
 const recurringTransactionRouter = require("./routes/RecurringTransactionRoute.js");
 const notificationRouter = require("./routes/notificationRoute.js");
 const exportRoutes = require("./routes/exportRoute.js");
+const familyRouter = require("./routes/familyRoute.js");
+const familyTransferRouter = require("./routes/familyTransferRoute.js");
 connectDB();
 
 const app = express();
@@ -34,5 +36,7 @@ app.use("/api/stats", statsRouter);
 app.use("/api/recurring-transactions", recurringTransactionRouter);
 app.use("/api/notifications", notificationRouter);
 app.use("/api/export", exportRoutes);
+app.use("/api/families", familyRouter);
+app.use("/api/family-transfers", familyTransferRouter);
 
 module.exports = app;

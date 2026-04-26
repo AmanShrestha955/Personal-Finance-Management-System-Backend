@@ -5,7 +5,12 @@ const AccountSchema = new Schema(
     userId: {
       type: Schema.Types.ObjectId,
       ref: "User",
-      required: true,
+      default: null,
+    },
+    familyId: {
+      type: Schema.Types.ObjectId,
+      ref: "Family",
+      default: null,
     },
     balance: {
       type: Number,
@@ -23,6 +28,15 @@ const AccountSchema = new Schema(
   },
   { timestamps: true },
 );
+
+AccountSchema.pre("validate", function (next) {
+  if (!this.userId && !this.familyId) {
+    return next(
+      new Error("An account must belong to either a user or a family"),
+    );
+  }
+  next();
+});
 
 const Account = model("Account", AccountSchema);
 module.exports = Account;

@@ -87,4 +87,21 @@ const sendWeeklyReminderEmail = async (toEmail, userName, goals) => {
   console.log(`Weekly reminder email sent to ${toEmail}`);
 };
 
-module.exports = { sendWeeklyReminderEmail };
+/**
+ * @param {string} to - recipient email
+ * @param {string} subject - email subject
+ * @param {string} html - email html body
+ */
+const sendEmail = async ({ to, subject, html }) => {
+  const mailOptions = {
+    from: `"Saving Goals App" <${process.env.USER_EMAIL}>`,
+    to,
+    subject,
+    html,
+  };
+
+  await transporter.sendMail(mailOptions);
+  console.log(`Email sent to ${to}`);
+};
+
+module.exports = { sendWeeklyReminderEmail, sendEmail };

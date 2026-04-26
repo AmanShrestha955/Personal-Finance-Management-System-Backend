@@ -13,6 +13,11 @@ const TransactionSchema = new Schema(
       ref: "Account",
       required: true,
     },
+    familyTransactionRef: {
+      type: Schema.Types.ObjectId,
+      ref: "Transaction",
+      default: null,
+    },
     title: {
       type: String,
       required: true,
@@ -37,7 +42,7 @@ const TransactionSchema = new Schema(
     },
     paymentMethod: {
       type: String,
-      enum: ["Cash", "Credit Card", "Debit Card", "e-Wallet"],
+      enum: ["Cash", "Credit Card", "Debit Card", "e-Wallet", "Transfer"],
       require: true,
     },
     description: {
@@ -57,6 +62,16 @@ const TransactionSchema = new Schema(
       type: String,
       trim: true,
     },
+    familyId: {
+      type: Schema.Types.ObjectId,
+      ref: "Family",
+      default: null, // null = personal budget
+    },
+    visibility: {
+      type: String,
+      enum: ["personal", "shared"],
+      default: "personal",
+    },
     tags: [
       {
         type: String,
@@ -64,7 +79,7 @@ const TransactionSchema = new Schema(
       },
     ],
   },
-  { timestamps: true }
+  { timestamps: true },
 );
 
 TransactionSchema.index({ userId: 1, transactionDate: -1 });

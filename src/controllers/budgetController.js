@@ -91,7 +91,11 @@ const getBudgetByCategory = async (req, res) => {
   try {
     const { category } = req.params;
     const { id } = req.user;
-    const budget = await Budget.findOne({ category: category, userId: id });
+    const budget = await Budget.findOne({
+      category: category,
+      userId: id,
+      visibility: "personal",
+    });
     if (!budget) {
       return res.status(404).json({
         message: "Budget not found",
@@ -113,7 +117,7 @@ const getBudgetByCategory = async (req, res) => {
 const getBudgets = async (req, res) => {
   try {
     const { id } = req.user;
-    const budgets = await Budget.find({ userId: id });
+    const budgets = await Budget.find({ userId: id, visibility: "personal" });
     if (!budgets) {
       return res.status(404).json({
         message: "Failed to get Budgets",

@@ -2,6 +2,7 @@ const User = require("../models/userModels.js");
 const bcrypt = require("bcrypt");
 const generateToken = require("../utils/generateToken.js");
 const crypto = require("crypto");
+const Account = require("../models/accountModels.js");
 const {
   sendVerificationEmail,
 } = require("../middlewares/sendVerificationEmail.js");
@@ -11,6 +12,7 @@ const {
 
 const Signup = async (req, res) => {
   const { name, email, password, confirmPassword } = req.body;
+  console.log("Signup request body:", req.body);
   if (!password === confirmPassword) {
     return res.status(400).json({ message: "password do not match" });
   }
@@ -22,6 +24,7 @@ const Signup = async (req, res) => {
   try {
     const userExists = await User.findOne({ email });
     if (userExists && userExists.isVerified === true) {
+      console.log("User already exists and is verified:", userExists);
       return res.status(400).json({ message: "User already exists" });
     }
     const hashedPassword = await bcrypt.hash(password, 10);
@@ -39,6 +42,7 @@ const Signup = async (req, res) => {
     const verifyUrl = `http://localhost:3000/verify-email/${tokenVerification}`; // frontend link
     console.log("verify Url: ", verifyUrl);
     sendVerificationEmail(email, verifyUrl);
+    console.log("User created:", user);
     res.status(201).json({
       message: "User created successfully",
     });
@@ -96,6 +100,11 @@ const verifyEmail = async (req, res) => {
     user.verificationToken = undefined;
     user.verificationTime = undefined;
     await user.save();
+
+    const existingAccount = await Account.findOne({ userId: user._id });
+    if (!existingAccount) {
+      await Account.create({ userId: user._id });
+    }
 
     res
       .status(200)
@@ -177,4 +186,76 @@ const resetPassword = async (req, res) => {
   }
 };
 
-module.exports = { Signup, Login, verifyEmail, forgotPassword, resetPassword };
+const deleteUser = async (req, res) => {
+  const session = await mongoose.startSession();
+  session.startTransaction();
+  try {
+    const userId = req.user.id;
+
+    // ── Block deletion if user is a family owner ──────────────────────────
+    const ownedFamily = await Family.findOne({
+      owner: userId,
+      isActive: true,
+    }).session(session);
+
+    if (ownedFamily) {
+      await session.abortTransaction();
+      return res.status(400).json({
+        message:
+          "You must transfer family ownership or dissolve the family before deleting your account.",
+      });
+    }
+
+    // ── Remove from family membership ─────────────────────────────────────
+    await Family.updateMany(
+      { "members.user": userId },
+      { $pull: { members: { user: userId } } },
+      { session },
+    );
+
+    // ── Remove pending invites by email ───────────────────────────────────
+    const user = await User.findById(userId).session(session);
+    await Family.updateMany(
+      { "pendingInvites.email": user.email },
+      { $pull: { pendingInvites: { email: user.email } } },
+      { session },
+    );
+
+    // ── Delete personal finance data ──────────────────────────────────────
+    await Transaction.deleteMany({ userId, familyId: null }).session(session);
+    await Account.deleteMany({ userId, familyId: null }).session(session);
+    await Budget.deleteMany({ userId, familyId: null }).session(session);
+    await SavingGoal.deleteMany({ userId, familyId: null }).session(session);
+    await Saving.deleteMany({ userId }).session(session);
+
+    // ── Cancel pending transfers ───────────────────────────────────────────
+    await FamilyTransfer.updateMany(
+      {
+        $or: [{ fromUser: userId }, { toUser: userId }],
+        status: "pending",
+      },
+      { status: "cancelled" },
+      { session },
+    );
+
+    // ── Delete the user ───────────────────────────────────────────────────
+    await User.findByIdAndDelete(userId).session(session);
+
+    await session.commitTransaction();
+    res.status(200).json({ message: "Account deleted successfully." });
+  } catch (error) {
+    await session.abortTransaction();
+    res.status(500).json({ message: "Internal server error." });
+  } finally {
+    session.endSession();
+  }
+};
+
+module.exports = {
+  Signup,
+  Login,
+  verifyEmail,
+  forgotPassword,
+  resetPassword,
+  deleteUser,
+};

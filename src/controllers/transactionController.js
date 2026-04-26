@@ -3,7 +3,6 @@ const Budget = require("../models/budgetModels.js");
 const Account = require("../models/accountModels.js");
 const mongoose = require("mongoose");
 const { createTransactionCore } = require("../services/transactionServices.js");
-const { warn } = require("node:console");
 
 const createTransaction = async (req, res) => {
   try {
@@ -82,7 +81,10 @@ const createTransaction = async (req, res) => {
 const getTransactions = async (req, res) => {
   try {
     const { id } = req.user;
-    const transactions = await Transaction.find({ userId: id }).sort({
+    const transactions = await Transaction.find({
+      userId: id,
+      familyId: null,
+    }).sort({
       createdAt: -1,
     });
     res.status(200).json({
@@ -165,12 +167,10 @@ const updateTransaction = async (req, res) => {
     if (transaction.userId.toString() !== id) {
       await session.abortTransaction();
       session.endSession();
-      return res
-        .status(403)
-        .json({
-          message: "You are not authorized to update this transaction",
-          messageStatus: "error",
-        });
+      return res.status(403).json({
+        message: "You are not authorized to update this transaction",
+        messageStatus: "error",
+      });
     }
 
     // Get receipt path from uploaded file
