@@ -14,6 +14,7 @@ const notificationRouter = require("./routes/notificationRoute.js");
 const exportRoutes = require("./routes/exportRoute.js");
 const familyRouter = require("./routes/familyRoute.js");
 const familyTransferRouter = require("./routes/familyTransferRoute.js");
+const adminRouter = require("./admin/adminRoute.js");
 connectDB();
 
 const app = express();
@@ -38,5 +39,6 @@ app.use("/api/notifications", notificationRouter);
 app.use("/api/export", exportRoutes);
 app.use("/api/families", familyRouter);
 app.use("/api/family-transfers", familyTransferRouter);
+app.use("/api/auth", adminRouter);
 
 module.exports = app;
