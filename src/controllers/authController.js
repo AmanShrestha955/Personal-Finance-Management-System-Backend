@@ -68,6 +68,13 @@ const Login = async (req, res) => {
         .status(403)
         .json({ message: "Please verify your email before logging in." });
     }
+    // Google-only accounts have no password
+    if (!user.password) {
+      return res.status(400).json({
+        message:
+          "This account uses Google sign-in. Please use the 'Sign in with Google' button.",
+      });
+    }
     const isPasswordValid = await bcrypt.compare(password, user.password);
     if (!isPasswordValid) {
       return res.status(400).json({ message: "Invalid email or password" });

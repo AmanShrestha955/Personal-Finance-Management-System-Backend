@@ -844,10 +844,223 @@ const getIncomeExpenseComparison = async (req, res) => {
   }
 };
 
+const getFutureProjection = async (req, res) => {
+  try {
+    const { id } = req.user;
+    const userId = new mongoose.Types.ObjectId(id);
+    const now = new Date();
+
+    // Build last 3 months date ranges
+    const months = [];
+    for (let i = 2; i >= 0; i--) {
+      const start = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      const end = new Date(
+        now.getFullYear(),
+        now.getMonth() - i + 1,
+        0,
+        23,
+        59,
+        59,
+      );
+      months.push({ start, end });
+    }
+
+    // Fetch income and expenses for each month
+    const monthlyData = await Promise.all(
+      months.map(async ({ start, end }) => {
+        const result = await Transaction.aggregate([
+          {
+            $match: {
+              userId,
+              transactionDate: { $gte: start, $lte: end },
+              familyId: null,
+            },
+          },
+          {
+            $group: {
+              _id: "$type",
+              total: { $sum: "$amount" },
+            },
+          },
+        ]);
+
+        const income = result.find((r) => r._id === "income")?.total || 0;
+        const expenses = result.find((r) => r._id === "expense")?.total || 0;
+        const savings = income - expenses;
+
+        return {
+          month: start.toLocaleDateString("en-US", {
+            month: "long",
+            year: "numeric",
+          }),
+          income,
+          expenses,
+          savings,
+          hasData: income > 0 || expenses > 0,
+        };
+      }),
+    );
+
+    // Filter only months that actually have transaction data
+    const activeMonths = monthlyData.filter((m) => m.hasData);
+
+    // Need at least 1 month of data
+    if (activeMonths.length === 0) {
+      return res.status(200).json({
+        message: "Future projection fetched successfully",
+        data: {
+          status: "no_data",
+          alert: {
+            type: "warning",
+            message:
+              "No transactions found. Start adding your income and expenses to see future projections.",
+          },
+          monthlyData,
+        },
+      });
+    }
+
+    // Calculate avg monthly savings from available months only
+    const avgMonthlySavings =
+      activeMonths.reduce((sum, m) => sum + m.savings, 0) / activeMonths.length;
+
+    // Calculate growth rate from all active months (including negative)
+    let growthRate = 0;
+    if (activeMonths.length >= 2) {
+      const first = activeMonths[0].savings;
+      const last = activeMonths[activeMonths.length - 1].savings;
+      const intervals = activeMonths.length - 1;
+      if (first !== 0) {
+        growthRate = (last - first) / Math.abs(first) / intervals;
+      } else {
+        // first month is zero — use last month directly as the rate signal
+        growthRate = last > 0 ? 0.1 : last < 0 ? -0.1 : 0;
+      }
+    }
+
+    // Cap growth rate to realistic range: -50% to +50%
+    growthRate = Math.max(-0.5, Math.min(growthRate, 0.5));
+    // If only 1 month — growth rate stays 0 (flat projection)
+
+    // Cap growth rate to realistic range: -50% to +50%
+    growthRate = Math.max(-0.5, Math.min(growthRate, 0.5));
+
+    // Get current account balance
+    const account = await Account.findOne({ userId: id });
+    const currentBalance = account ? account.balance : 0;
+
+    // Project for next 6 months with cumulative balance
+    const projections = [];
+    let cumulativeSavings = 0;
+
+    for (let i = 1; i <= 6; i++) {
+      const projectedSavings = avgMonthlySavings * Math.pow(1 + growthRate, i);
+      cumulativeSavings += projectedSavings;
+      const projectedBalance = currentBalance + cumulativeSavings;
+      const projectedDate = new Date(now.getFullYear(), now.getMonth() + i, 1);
+
+      projections.push({
+        month: projectedDate.toLocaleDateString("en-US", {
+          month: "long",
+          year: "numeric",
+        }),
+        projectedSavings: Math.round(projectedSavings),
+        projectedBalance: Math.round(projectedBalance),
+      });
+    }
+
+    // Build alert
+    const growthPercent = Math.round(growthRate * 100);
+    const lastSavings = activeMonths[activeMonths.length - 1].savings;
+    let alert;
+
+    if (activeMonths.length === 1) {
+      // Only 1 month — flat projection, encourage more usage
+      if (avgMonthlySavings <= 0) {
+        alert = {
+          type: "danger",
+          message:
+            "Your expenses exceeded your income this month. Try reducing your spending.",
+        };
+      } else {
+        alert = {
+          type: "info",
+          message: `Based on your first month, you're saving Rs. ${Math.round(avgMonthlySavings).toLocaleString()} monthly. Use the app for 2–3 months for a more accurate trend.`,
+        };
+      }
+    } else if (lastSavings <= 0) {
+      alert = {
+        type: "danger",
+        message:
+          "Your expenses exceeded your income last month. You're losing money.",
+      };
+    } else if (growthRate < -0.1) {
+      alert = {
+        type: "danger",
+        message: `Your savings dropped ${Math.abs(growthPercent)}% monthly over the last ${activeMonths.length} months. Cut down on expenses before it gets worse.`,
+      };
+    } else if (growthRate < 0) {
+      alert = {
+        type: "warning",
+        message: `Your savings are declining slightly (${Math.abs(growthPercent)}% monthly). Keep an eye on your expenses.`,
+      };
+    } else if (growthRate === 0) {
+      alert = {
+        type: "info",
+        message:
+          "Your savings are stable. Consider increasing your income or reducing expenses to grow faster.",
+      };
+    } else if (growthRate < 0.1) {
+      alert = {
+        type: "success",
+        message: `Your savings are growing slowly at ${growthPercent}% monthly. You're on the right track.`,
+      };
+    } else {
+      alert = {
+        type: "success",
+        message: `Great progress! Your savings are growing ${growthPercent}% monthly. Keep it up.`,
+      };
+    }
+
+    const projectedBalanceIn6Months = projections[5].projectedBalance;
+
+    res.status(200).json({
+      message: "Future projection fetched successfully",
+      data: {
+        status: "projected",
+        monthsUsed: activeMonths.length,
+        summary: {
+          currentBalance,
+          avgMonthlySavings: Math.round(avgMonthlySavings),
+          growthRate: growthPercent,
+          projectedBalanceIn6Months,
+          description:
+            activeMonths.length === 1
+              ? `Based on your first month, at this rate you'll have Rs. ${projectedBalanceIn6Months.toLocaleString()} in 6 months.`
+              : `Based on your last ${activeMonths.length} months, your savings are ${
+                  growthRate >= 0 ? "growing" : "declining"
+                } ${Math.abs(growthPercent)}% monthly. At this rate you'll have Rs. ${projectedBalanceIn6Months.toLocaleString()} in 6 months.`,
+        },
+        alert,
+        monthlyData,
+        projections,
+      },
+    });
+  } catch (error) {
+    console.log(error);
+    res.status(500).json({
+      message:
+        "Future projection failed. Error in getFutureProjection function",
+      error: error.message,
+    });
+  }
+};
+
 module.exports = {
   getTop5Expenses,
   getAmountByTimePeriodAndType,
   getAccountSummary,
   getMoneyHighlightsData,
   getIncomeExpenseComparison,
+  getFutureProjection,
 };

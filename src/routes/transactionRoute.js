@@ -6,6 +6,7 @@ const {
   deleteTransaction,
   getTotalSpendByDateRange,
   getRecentMonthTransactions,
+  getResentTags,
 } = require("../controllers/transactionController.js");
 const { Router } = require("express");
 const authMiddleware = require("../middlewares/authMiddlewares.js");
@@ -32,6 +33,7 @@ transactionRouter.get(
   authMiddleware,
   getRecentMonthTransactions,
 );
+transactionRouter.get("/tags/recent", authMiddleware, getResentTags);
 transactionRouter.get("/:transactionId", authMiddleware, getTransactionById);
 transactionRouter.get("/", authMiddleware, getTransactions);
 transactionRouter.put(

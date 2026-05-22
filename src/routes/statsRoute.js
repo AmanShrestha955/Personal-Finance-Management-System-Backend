@@ -4,6 +4,7 @@ const {
   getAccountSummary,
   getMoneyHighlightsData,
   getIncomeExpenseComparison,
+  getFutureProjection,
 } = require("../controllers/statsController.js");
 const {
   getFinancialHealthMetrics,
@@ -27,5 +28,6 @@ statsRouter.get(
   getIncomeExpenseComparison,
 );
 statsRouter.get("/financial-health", authMiddleware, getFinancialHealthMetrics);
+statsRouter.get("/projection", authMiddleware, getFutureProjection);
 
 module.exports = statsRouter;

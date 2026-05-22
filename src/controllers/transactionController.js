@@ -81,21 +81,101 @@ const createTransaction = async (req, res) => {
 const getTransactions = async (req, res) => {
   try {
     const { id } = req.user;
-    const transactions = await Transaction.find({
+    const { type, category, startDate, endDate, search, page = 1, limit = 10 } = req.query;
+
+    // ── Build filter ──────────────────────────────────────────────────────
+    const filter = {
       userId: id,
       familyId: null,
-    }).sort({
-      createdAt: -1,
-    });
+    };
+
+    // type filter — "all" or omitted means no type constraint
+    if (type && type !== "all") {
+      if (!["income", "expense"].includes(type)) {
+        return res.status(400).json({
+          message: "Type must be 'income', 'expense', or 'all'",
+          messageStatus: "error",
+        });
+      }
+      filter.type = type;
+    }
+
+    // category filter — case-insensitive exact match
+    if (category) {
+      const categoryList = category
+        .split(",")
+        .map((c) => c.trim())
+        .filter(Boolean);
+
+      if (categoryList.length === 1) {
+        filter.category = { $regex: new RegExp(`^${categoryList[0]}$`, "i") };
+      } else {
+        filter.category = {
+          $in: categoryList.map((c) => new RegExp(`^${c}$`, "i")),
+        };
+      }
+    }
+
+    // date range filter on transactionDate
+    if (startDate || endDate) {
+      filter.transactionDate = {};
+      if (startDate) {
+        const start = new Date(startDate);
+        if (isNaN(start.getTime())) {
+          return res.status(400).json({
+            message: "Invalid startDate format",
+            messageStatus: "error",
+          });
+        }
+        filter.transactionDate.$gte = start;
+      }
+      if (endDate) {
+        const end = new Date(endDate);
+        if (isNaN(end.getTime())) {
+          return res.status(400).json({
+            message: "Invalid endDate format",
+            messageStatus: "error",
+          });
+        }
+        end.setHours(23, 59, 59, 999); // include the full end day
+        filter.transactionDate.$lte = end;
+      }
+    }
+
+    // search filter — case-insensitive substring match on title
+    if (search) {
+      filter.title = { $regex: search, $options: "i" };
+    }
+
+    // Parse pagination parameters
+    const pageNum = Math.max(1, parseInt(page, 10) || 1);
+    const limitNum = Math.max(1, parseInt(limit, 10) || 10);
+    const skip = (pageNum - 1) * limitNum;
+
+    // Get total count for pagination
+    const total = await Transaction.countDocuments(filter);
+
+    const transactions = await Transaction.find(filter)
+      .sort({ transactionDate: -1 })
+      .skip(skip)
+      .limit(limitNum);
+
     res.status(200).json({
       message: "Transactions fetched successfully",
+      messageStatus: "success",
       data: transactions,
+      pagination: {
+        currentPage: pageNum,
+        totalPages: Math.ceil(total / limitNum),
+        totalItems: total,
+        itemsPerPage: limitNum,
+      },
     });
   } catch (error) {
     console.log(error);
     res.status(500).json({
       message:
-        "Fetching transactions failed. error in getTransactions function",
+        "Fetching transactions failed. Error in getTransactions function",
       error: error.message,
     });
   }
@@ -529,6 +609,49 @@ const getRecentMonthTransactions = async (req, res) => {
   }
 };
 
+const getResentTags = async (req, res) => {
+  try {
+    const { id } = req.user;
+
+    // Get the last 30 transactions for the user
+    const transactions = await Transaction.find({
+      userId: id,
+      familyId: null,
+    })
+      .sort({ transactionDate: -1 })
+      .limit(30)
+      .select("tags");
+
+    // Extract all unique tags from transactions
+    const tagsSet = new Set();
+    transactions.forEach((transaction) => {
+      if (transaction.tags && Array.isArray(transaction.tags)) {
+        transaction.tags.forEach((tag) => {
+          if (tag) {
+            tagsSet.add(tag);
+          }
+        });
+      }
+    });
+
+    // Convert set to sorted array
+    const uniqueTags = Array.from(tagsSet).sort();
+
+    res.status(200).json({
+      message: "Recent tags fetched successfully",
+      messageStatus: "success",
+      data: uniqueTags,
+    });
+  } catch (error) {
+    console.log(error);
+    res.status(500).json({
+      message: "Fetching recent tags failed. error in getResentTags function",
+      messageStatus: "error",
+      error: error.message,
+    });
+  }
+};
+
 module.exports = {
   createTransaction,
   getTransactionById,
@@ -537,4 +660,5 @@ module.exports = {
   deleteTransaction,
   getTotalSpendByDateRange,
   getRecentMonthTransactions,
+  getResentTags,
 };

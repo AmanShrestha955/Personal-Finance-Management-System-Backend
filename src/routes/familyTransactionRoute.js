@@ -8,6 +8,7 @@ const {
   updateFamilyTransaction,
   deleteFamilyTransaction,
   getFamilyTransactionSummary,
+  getFamilyResentTags,
 } = require("../controllers/familyTransactionController.js");
 
 const {
@@ -40,6 +41,11 @@ router.get(
   authMiddleware,
   getFamilyTransactionSummary,
 ); // ← before :transactionId
+router.get(
+  "/:familyId/transactions/tags/recent",
+  authMiddleware,
+  getFamilyResentTags,
+);
 router.get(
   "/:familyId/transactions/:transactionId",
   authMiddleware,

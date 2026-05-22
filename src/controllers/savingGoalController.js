@@ -65,9 +65,84 @@ const getSavingGoals = async (req, res) => {
       });
     }
 
+    // Add pace projection to each goal
+    const goalsWithProjection = await Promise.all(
+      savingGoals.map(async (goal) => {
+        const goalObj = goal.toObject();
+
+        // Skip completed goals
+        if (goal.isCompleted) {
+          goalObj.projection = { status: "completed" };
+          return goalObj;
+        }
+
+        // Get all 'add' saving transactions for this goal grouped by month
+        const monthlySavings = await Saving.aggregate([
+          {
+            $match: {
+              savingGoalId: goal._id,
+              transactionType: "add",
+            },
+          },
+          {
+            $group: {
+              _id: {
+                year: { $year: "$createdAt" },
+                month: { $month: "$createdAt" },
+              },
+              totalAdded: { $sum: "$amount" },
+            },
+          },
+          { $sort: { "_id.year": 1, "_id.month": 1 } },
+        ]);
+
+        // Need at least 1 month of data
+        if (monthlySavings.length === 0) {
+          goalObj.projection = { status: "insufficient_data" };
+          return goalObj;
+        }
+
+        // Calculate average monthly saving rate
+        const totalAdded = monthlySavings.reduce(
+          (sum, m) => sum + m.totalAdded,
+          0,
+        );
+        const avgMonthlyRate = totalAdded / monthlySavings.length;
+
+        if (avgMonthlyRate <= 0) {
+          goalObj.projection = { status: "insufficient_data" };
+          return goalObj;
+        }
+
+        // Calculate months needed to reach the goal
+        const remaining = goal.targetAmount - goal.currentSaving;
+        const monthsNeeded = Math.ceil(remaining / avgMonthlyRate);
+
+        // Calculate projected date
+        const projectedDate = new Date();
+        projectedDate.setMonth(projectedDate.getMonth() + monthsNeeded);
+
+        const projectedDateLabel = projectedDate.toLocaleDateString("en-US", {
+          month: "long",
+          year: "numeric",
+        });
+
+        goalObj.projection = {
+          status: "on_track",
+          avgMonthlyRate: Math.round(avgMonthlyRate),
+          monthsNeeded,
+          projectedDate: projectedDate.toISOString(),
+          projectedDateLabel, // e.g. "March 2026"
+          message: `At this pace, you'll reach your goal by ${projectedDateLabel}`,
+        };
+
+        return goalObj;
+      }),
+    );
+
     res.status(200).json({
       message: "Saving Goals fetched successfully",
-      data: savingGoals,
+      data: goalsWithProjection,
     });
   } catch (error) {
     console.log(error);
@@ -321,30 +396,63 @@ const updateSavingProgress = async (req, res) => {
 };
 
 const deleteSavingGoal = async (req, res) => {
+  const session = await mongoose.startSession();
+  session.startTransaction();
   try {
     const { id } = req.user;
     const { goalId } = req.params;
 
-    const savingGoal = await SavingGoal.findOneAndDelete({
+    const savingGoal = await SavingGoal.findOne({
       _id: goalId,
       userId: id,
-    });
+    }).session(session);
 
     if (!savingGoal) {
+      await session.abortTransaction();
+      session.endSession();
       return res.status(404).json({
         message: "Saving Goal not found or you're not authorized to delete it",
       });
     }
 
+    // Only refund if NOT completed and has saved amount
+    if (!savingGoal.isCompleted && savingGoal.currentSaving > 0) {
+      const account = await Account.findOne({ userId: id }).session(session);
+
+      if (!account) {
+        await session.abortTransaction();
+        session.endSession();
+        return res.status(404).json({
+          message: "Account not found. Cannot refund saving balance.",
+        });
+      }
+
+      account.balance += savingGoal.currentSaving;
+      await account.save({ session });
+    }
+
+    await SavingGoal.findOneAndDelete({ _id: goalId, userId: id }).session(
+      session,
+    );
+
+    await session.commitTransaction();
+
     res.status(200).json({
-      message: "Saving Goal deleted successfully",
+      message:
+        !savingGoal.isCompleted && savingGoal.currentSaving > 0
+          ? `Saving Goal deleted. Rs ${savingGoal.currentSaving} has been refunded to your account.`
+          : "Saving Goal deleted successfully.",
+      refundedAmount: !savingGoal.isCompleted ? savingGoal.currentSaving : 0,
     });
   } catch (error) {
+    await session.abortTransaction();
     console.log(error);
     res.status(500).json({
       message: "Delete Saving Goal failed. Error in deleteSavingGoal function",
       error: error.message,
     });
+  } finally {
+    session.endSession();
   }
 };
 

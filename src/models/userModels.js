@@ -15,8 +15,9 @@ const UserSchema = new Schema(
     },
     password: {
       type: String,
-      required: true,
+      required: false, // not required for Google OAuth users
       trim: true,
+      default: null,
     },
     phoneNumber: {
       type: String,
@@ -37,7 +38,7 @@ const UserSchema = new Schema(
       enum: ["local", "google"],
       default: "local",
     },
-    providerId: {
+    googleId: {
       type: String,
       default: null,
     },

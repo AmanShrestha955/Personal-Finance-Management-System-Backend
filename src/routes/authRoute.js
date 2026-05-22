@@ -6,6 +6,7 @@ const {
   resetPassword,
   deleteUser,
 } = require("../controllers/authController.js");
+const { googleAuth } = require("../controllers/googleAuthController.js");
 const { SetUp } = require("../controllers/setUpController.js");
 
 const { Router } = require("express");
@@ -19,5 +20,6 @@ authRouter.post("/setup", authMiddleware, SetUp);
 authRouter.post("/forgot-password", forgotPassword);
 authRouter.post("/reset-password/:token", resetPassword);
 authRouter.delete("/me", authMiddleware, deleteUser);
+authRouter.post("/google", googleAuth);
 
 module.exports = authRouter;

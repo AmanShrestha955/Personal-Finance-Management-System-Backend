@@ -290,23 +290,104 @@ const createFamilyTransaction = async (req, res) => {
 // ═════════════════════════════════════════════
 // GET all transactions for a family
 // GET /api/families/:familyId/transactions
+// GET /api/families/:familyId/transactions?type=income&startDate=2025-06-01
 // Any member
 // ═════════════════════════════════════════════
 const getFamilyTransactions = async (req, res) => {
   try {
     const { id: userId } = req.user;
     const { familyId } = req.params;
+    const { type, category, startDate, endDate, search, page = 1, limit = 10 } = req.query;
 
     await resolveFamilyRole(familyId, userId, null);
 
-    const transactions = await Transaction.find({ familyId })
+    // ── Build filter ──────────────────────────────────────────────────────
+    const filter = {
+      familyId: new mongoose.Types.ObjectId(familyId),
+    };
+
+    // type filter — "all" or omitted means no type constraint
+    if (type && type !== "all") {
+      if (!["income", "expense"].includes(type)) {
+        return res.status(400).json({
+          message: "Type must be 'income', 'expense', or 'all'",
+          messageStatus: "error",
+        });
+      }
+      filter.type = type;
+    }
+
+    // category filter — case-insensitive exact match
+    if (category) {
+      const categoryList = category
+        .split(",")
+        .map((c) => c.trim())
+        .filter(Boolean);
+
+      if (categoryList.length === 1) {
+        filter.category = { $regex: new RegExp(`^${categoryList[0]}$`, "i") };
+      } else {
+        filter.category = {
+          $in: categoryList.map((c) => new RegExp(`^${c}$`, "i")),
+        };
+      }
+    }
+
+    // date range filter on transactionDate
+    if (startDate || endDate) {
+      filter.transactionDate = {};
+      if (startDate) {
+        const start = new Date(startDate);
+        if (isNaN(start.getTime())) {
+          return res.status(400).json({
+            message: "Invalid startDate format",
+            messageStatus: "error",
+          });
+        }
+        filter.transactionDate.$gte = start;
+      }
+      if (endDate) {
+        const end = new Date(endDate);
+        if (isNaN(end.getTime())) {
+          return res.status(400).json({
+            message: "Invalid endDate format",
+            messageStatus: "error",
+          });
+        }
+        end.setHours(23, 59, 59, 999); // include the full end day
+        filter.transactionDate.$lte = end;
+      }
+    }
+
+    // search filter — case-insensitive substring match on title
+    if (search) {
+      filter.title = { $regex: search, $options: "i" };
+    }
+
+    // Parse pagination parameters
+    const pageNum = Math.max(1, parseInt(page, 10) || 1);
+    const limitNum = Math.max(1, parseInt(limit, 10) || 10);
+    const skip = (pageNum - 1) * limitNum;
+
+    // Get total count for pagination
+    const total = await Transaction.countDocuments(filter);
+
+    const transactions = await Transaction.find(filter)
       .populate("userId", "name email photo")
-      .sort({ transactionDate: -1 });
+      .sort({ transactionDate: -1 })
+      .skip(skip)
+      .limit(limitNum);
 
     res.status(200).json({
       message: "Family transactions fetched successfully",
       messageStatus: "success",
       data: transactions,
+      pagination: {
+        currentPage: pageNum,
+        totalPages: Math.ceil(total / limitNum),
+        totalItems: total,
+        itemsPerPage: limitNum,
+      },
     });
   } catch (error) {
     console.error(error);
@@ -810,6 +891,56 @@ const getFamilyTransactionSummary = async (req, res) => {
   }
 };
 
+// ═════════════════════════════════════════════
+// GET recent tags from family transactions
+// GET /api/families/:familyId/transactions/tags/recent
+// Any member
+// ═════════════════════════════════════════════
+const getFamilyResentTags = async (req, res) => {
+  try {
+    const { id: userId } = req.user;
+    const { familyId } = req.params;
+
+    // Verify user is a family member
+    await resolveFamilyRole(familyId, userId, null);
+
+    // Get the last 30 family transactions
+    const transactions = await Transaction.find({
+      familyId: new mongoose.Types.ObjectId(familyId),
+    })
+      .sort({ transactionDate: -1 })
+      .limit(30)
+      .select("tags");
+
+    // Extract all unique tags from transactions
+    const tagsSet = new Set();
+    transactions.forEach((transaction) => {
+      if (transaction.tags && Array.isArray(transaction.tags)) {
+        transaction.tags.forEach((tag) => {
+          if (tag) {
+            tagsSet.add(tag);
+          }
+        });
+      }
+    });
+
+    // Convert set to sorted array
+    const uniqueTags = Array.from(tagsSet).sort();
+
+    res.status(200).json({
+      message: "Recent family tags fetched successfully",
+      messageStatus: "success",
+      data: uniqueTags,
+    });
+  } catch (error) {
+    console.error(error);
+    res.status(error.statusCode || 500).json({
+      message: error.message,
+      messageStatus: "error",
+    });
+  }
+};
+
 module.exports = {
   createFamilyTransaction,
   getFamilyTransactions,
@@ -817,4 +948,5 @@ module.exports = {
   updateFamilyTransaction,
   deleteFamilyTransaction,
   getFamilyTransactionSummary,
+  getFamilyResentTags,
 };
