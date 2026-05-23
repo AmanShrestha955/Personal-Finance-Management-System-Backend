@@ -10,6 +10,7 @@ const createBudget = async (req, res) => {
     const existingBudget = await Budget.findOne({
       userId: id,
       category: category,
+      visibility: "personal",
     });
     if (existingBudget) {
       return res.status(400).json({

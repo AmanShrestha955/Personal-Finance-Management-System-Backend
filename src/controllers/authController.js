@@ -80,8 +80,10 @@ const Login = async (req, res) => {
       return res.status(400).json({ message: "Invalid email or password" });
     }
     const token = generateToken(user._id);
+    console.log("onBoarding status:", user.onBoarding);
     res.status(200).json({
       token: token,
+      isOnboarded: user.isOnboarded,
       message: "Login successful",
     });
   } catch (error) {

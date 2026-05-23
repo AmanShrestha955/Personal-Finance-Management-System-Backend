@@ -57,7 +57,10 @@ const createSavingGoal = async (req, res) => {
 const getSavingGoals = async (req, res) => {
   try {
     const { id } = req.user;
-    const savingGoals = await SavingGoal.find({ userId: id });
+    const savingGoals = await SavingGoal.find({
+      userId: id,
+      visibility: "personal",
+    });
 
     if (!savingGoals) {
       return res.status(404).json({

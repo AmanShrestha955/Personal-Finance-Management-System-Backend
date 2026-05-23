@@ -27,7 +27,7 @@ const googleAuth = async (req, res) => {
       `https://www.googleapis.com/oauth2/v3/userinfo`,
       {
         headers: { Authorization: `Bearer ${accessToken}` },
-      }
+      },
     );
 
     if (!response.ok) {
@@ -61,6 +61,7 @@ const googleAuth = async (req, res) => {
         photo: picture,
         provider: "google",
         isVerified: true,
+        isOnboarded: false,
       });
 
       // Create linked Account for the new user
@@ -83,6 +84,7 @@ const googleAuth = async (req, res) => {
     const token = generateToken(user._id);
     return res.status(200).json({
       token,
+      isOnboarded: user.isOnboarded,
       message: "Google authentication successful",
     });
   } catch (error) {

@@ -333,8 +333,8 @@ exports.getMyFamily = async (req, res) => {
       "members.user": userId,
       isActive: true,
     })
-      .populate("owner", "name email photo")
-      .populate("members.user", "name email photo");
+      .populate("owner", "name email photo provider")
+      .populate("members.user", "name email photo provider");
 
     if (!family) {
       return res
