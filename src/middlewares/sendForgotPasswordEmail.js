@@ -1,15 +1,10 @@
 const nodemailer = require("nodemailer");
+const { Resend } = require("resend");
+const resend = new Resend(process.env.RESEND_API_KEY);
 
 const sendForgotPasswordEmail = async (email, resetUrl) => {
-  const transporter = nodemailer.createTransport({
-    service: "gmail",
-    auth: {
-      user: process.env.USER_EMAIL,
-      pass: process.env.USER_PASS,
-    },
-  });
-  const mailOptions = {
-    from: '"Smart Finance" <' + process.env.USER_EMAIL + ">",
+  await resend.emails.send({
+    from: "Smart Finance <onboarding@resend.dev>",
     to: email,
     subject: "Password Reset Request",
     html: `<!DOCTYPE html>
@@ -84,8 +79,7 @@ const sendForgotPasswordEmail = async (email, resetUrl) => {
         </table>
       </body>
       </html>`,
-  };
-  await transporter.sendMail(mailOptions);
+  });
 };
 
 module.exports = { sendForgotPasswordEmail };

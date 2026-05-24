@@ -39,7 +39,7 @@ const Signup = async (req, res) => {
       verificationToken: tokenVerification,
       verificationTime: verificationTokenExpires,
     });
-    const verifyUrl = `http://localhost:3000/verify-email/${tokenVerification}`; // frontend link
+    const verifyUrl = `${process.env.FRONTEND_URL}/verify-email/${tokenVerification}`; // frontend link
     console.log("verify Url: ", verifyUrl);
     sendVerificationEmail(email, verifyUrl);
     console.log("User created:", user);

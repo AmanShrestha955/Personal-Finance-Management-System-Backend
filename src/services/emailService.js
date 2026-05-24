@@ -1,12 +1,5 @@
-const nodemailer = require("nodemailer");
-
-const transporter = nodemailer.createTransport({
-  service: "gmail",
-  auth: {
-    user: process.env.USER_EMAIL,
-    pass: process.env.USER_PASS, // use Gmail App Password
-  },
-});
+const { Resend } = require("resend");
+const resend = new Resend(process.env.RESEND_API_KEY);
 
 /**
  * @param {string} toEmail - recipient email
@@ -50,7 +43,7 @@ const sendWeeklyReminderEmail = async (toEmail, userName, goals) => {
     })
     .join("");
 
-  const mailOptions = {
+  await resend.emails.send({
     from: `"Saving Goals App" <${process.env.EMAIL_USER}>`,
     to: toEmail,
     subject: "📊 Your Weekly Saving Goals Reminder",
@@ -81,9 +74,7 @@ const sendWeeklyReminderEmail = async (toEmail, userName, goals) => {
         </p>
       </div>
     `,
-  };
-
-  await transporter.sendMail(mailOptions);
+  });
   console.log(`Weekly reminder email sent to ${toEmail}`);
 };
 
@@ -93,14 +84,12 @@ const sendWeeklyReminderEmail = async (toEmail, userName, goals) => {
  * @param {string} html - email html body
  */
 const sendEmail = async ({ to, subject, html }) => {
-  const mailOptions = {
-    from: `"Saving Goals App" <${process.env.USER_EMAIL}>`,
+  await resend.emails.send({
+    from: `"Saving Goals App" <onboarding@resend.dev>`,
     to,
     subject,
     html,
-  };
-
-  await transporter.sendMail(mailOptions);
+  });
   console.log(`Email sent to ${to}`);
 };
 
