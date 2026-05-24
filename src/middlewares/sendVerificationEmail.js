@@ -1,7 +1,7 @@
 const { Resend } = require("resend");
 const resend = new Resend(process.env.RESEND_API_KEY);
 
-const sendVerificationEmail = async (email, verifiyUrl) => {
+const sendVerificationEmail = async (email, verifyUrl) => {
   await resend.emails.send({
     from: '"Smart Finance" <onboarding@resend.dev>',
     to: email,
