@@ -16,12 +16,24 @@ const createSavingGoal = async (req, res) => {
     const activeGoalsCount = await SavingGoal.countDocuments({
       userId: id,
       isCompleted: false,
+      visibility: "personal",
     });
 
     if (activeGoalsCount >= 3) {
       return res.status(400).json({
         message:
           "Maximum active goals limit reached. You can only have 3 active saving goals at a time. Please complete or remove an existing goal before creating a new one.",
+      });
+    }
+
+    if (
+      !goalName ||
+      targetAmount === undefined ||
+      !deadline ||
+      new Date(deadline) < new Date()
+    ) {
+      return res.status(400).json({
+        message: "Invalid goal details provided.",
       });
     }
 
