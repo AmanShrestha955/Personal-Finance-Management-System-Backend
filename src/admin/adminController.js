@@ -148,6 +148,27 @@ const getDashboardStats = async (req, res) => {
       },
     ]);
 
+    // Get transaction volume data (last 6 months)
+    const transactionGrowthData = await Transaction.aggregate([
+      {
+        $match: {
+          createdAt: { $gte: sixMonthsAgo },
+        },
+      },
+      {
+        $group: {
+          _id: {
+            month: { $month: "$createdAt" },
+            year: { $year: "$createdAt" },
+          },
+          count: { $sum: 1 },
+        },
+      },
+      {
+        $sort: { "_id.year": 1, "_id.month": 1 },
+      },
+    ]);
+
     // Get recent transactions
     const recentTransactions = await Transaction.find()
       .sort({ createdAt: -1 })
@@ -178,6 +199,7 @@ const getDashboardStats = async (req, res) => {
         totalBudgets,
       },
       userGrowthData,
+      transactionGrowthData,
       recentTransactions,
       transactionByCategory,
     });
