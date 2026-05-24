@@ -25,6 +25,17 @@ const createSavingGoal = async (req, res) => {
       });
     }
 
+    if (
+      currentSaving !== undefined &&
+      targetAmount !== undefined &&
+      currentSaving >= targetAmount
+    ) {
+      return res.status(400).json({
+        message:
+          "Current saving cannot be greater than or equal to target amount",
+      });
+    }
+
     const savingGoal = new SavingGoal({
       userId: id,
       goalName: goalName,
@@ -32,7 +43,7 @@ const createSavingGoal = async (req, res) => {
       currentSaving: currentSaving || 0,
       deadline: deadline,
       category: category,
-      isCompleted: currentSaving >= targetAmount,
+      isCompleted: false,
     });
 
     const savedGoal = await savingGoal.save();
