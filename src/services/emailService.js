@@ -1,8 +1,9 @@
-// ✅ correct
-const SibApiV3Sdk = require("sib-api-v3-sdk");
+const Mailjet = require("node-mailjet");
 
-const client = SibApiV3Sdk.ApiClient.instance;
-client.authentications["api-key"].apiKey = process.env.BREVO_API_KEY;
+const mailjet = Mailjet.apiConnect(
+  process.env.MAILJET_API_KEY,
+  process.env.MAILJET_SECRET_KEY,
+);
 
 const sendWeeklyReminderEmail = async (toEmail, userName, goals) => {
   const goalRows = goals
@@ -41,58 +42,56 @@ const sendWeeklyReminderEmail = async (toEmail, userName, goals) => {
     })
     .join("");
 
-  const apiInstance = new SibApiV3Sdk.TransactionalEmailsApi();
-
-  await apiInstance.sendTransacEmail({
-    sender: { name: "Smart Finance", email: "rentalsystem42@gmail.com" },
-    to: [{ email: toEmail }],
-    subject: "Your weekly saving goals reminder",
-    htmlContent: `
-      <div style="font-family: sans-serif; max-width: 700px; margin: 0 auto; border: 1px solid #e5e7eb; border-radius: 12px; overflow: hidden;">
-        <div style="background: #1a1a2e; padding: 28px 40px;">
-          <span style="color: white; font-size: 18px; font-weight: 500;">💰 Smart Finance</span>
-        </div>
-        <div style="padding: 32px 40px; background: #ffffff;">
-          <h2 style="font-size: 20px; font-weight: 600; color: #111827; margin: 0 0 8px;">
-            Hi ${userName}, here's your weekly savings update!
-          </h2>
-          <p style="font-size: 14px; color: #6b7280; margin: 0 0 24px;">
-            Stay on track with your saving goals. Here's how you're doing this week:
-          </p>
-          <table style="width: 100%; border-collapse: collapse;">
-            <thead>
-              <tr style="background: #f9fafb;">
-                <th style="padding: 12px; text-align: left; font-size: 13px; color: #6b7280; font-weight: 500;">Goal</th>
-                <th style="padding: 12px; text-align: left; font-size: 13px; color: #6b7280; font-weight: 500;">Category</th>
-                <th style="padding: 12px; text-align: left; font-size: 13px; color: #6b7280; font-weight: 500;">Progress</th>
-                <th style="padding: 12px; text-align: left; font-size: 13px; color: #6b7280; font-weight: 500;">Saved</th>
-                <th style="padding: 12px; text-align: left; font-size: 13px; color: #6b7280; font-weight: 500;">Deadline</th>
-                <th style="padding: 12px; text-align: left; font-size: 13px; color: #6b7280; font-weight: 500;">Weekly needed</th>
-              </tr>
-            </thead>
-            <tbody>${goalRows}</tbody>
-          </table>
-        </div>
-        <div style="border-top: 1px solid #f3f4f6; padding: 20px 40px; background: #f9fafb;">
-          <p style="font-size: 12px; color: #9ca3af; margin: 0;">
-            You're receiving this because you have active saving goals. You can disable reminders in your app settings.
-          </p>
-        </div>
-      </div>
-    `,
+  await mailjet.post("send", { version: "v3.1" }).request({
+    Messages: [
+      {
+        From: { Email: "rentalsystem42@gmail.com", Name: "Smart Finance" },
+        To: [{ Email: toEmail }],
+        Subject: "Your weekly saving goals reminder",
+        HTMLPart: `
+          <div style="font-family: sans-serif; max-width: 700px; margin: 0 auto; border: 1px solid #e5e7eb; border-radius: 12px; overflow: hidden;">
+            <div style="background: #1a1a2e; padding: 28px 40px;">
+              <span style="color: white; font-size: 18px; font-weight: 500;">💰 Smart Finance</span>
+            </div>
+            <div style="padding: 32px 40px; background: #ffffff;">
+              <h2 style="font-size: 20px; font-weight: 600; color: #111827; margin: 0 0 8px;">Hi ${userName}, here's your weekly savings update!</h2>
+              <p style="font-size: 14px; color: #6b7280; margin: 0 0 24px;">Stay on track with your saving goals.</p>
+              <table style="width: 100%; border-collapse: collapse;">
+                <thead>
+                  <tr style="background: #f9fafb;">
+                    <th style="padding: 12px; text-align: left; font-size: 13px; color: #6b7280; font-weight: 500;">Goal</th>
+                    <th style="padding: 12px; text-align: left; font-size: 13px; color: #6b7280; font-weight: 500;">Category</th>
+                    <th style="padding: 12px; text-align: left; font-size: 13px; color: #6b7280; font-weight: 500;">Progress</th>
+                    <th style="padding: 12px; text-align: left; font-size: 13px; color: #6b7280; font-weight: 500;">Saved</th>
+                    <th style="padding: 12px; text-align: left; font-size: 13px; color: #6b7280; font-weight: 500;">Deadline</th>
+                    <th style="padding: 12px; text-align: left; font-size: 13px; color: #6b7280; font-weight: 500;">Weekly needed</th>
+                  </tr>
+                </thead>
+                <tbody>${goalRows}</tbody>
+              </table>
+            </div>
+            <div style="border-top: 1px solid #f3f4f6; padding: 20px 40px; background: #f9fafb;">
+              <p style="font-size: 12px; color: #9ca3af; margin: 0;">You can disable reminders in your app settings.</p>
+            </div>
+          </div>
+        `,
+      },
+    ],
   });
 
   console.log(`Weekly reminder email sent to ${toEmail}`);
 };
 
 const sendEmail = async ({ to, subject, html }) => {
-  const apiInstance = new SibApiV3Sdk.TransactionalEmailsApi();
-
-  await apiInstance.sendTransacEmail({
-    sender: { name: "Smart Finance", email: "rentalsystem42@gmail.com" },
-    to: [{ email: to }],
-    subject,
-    htmlContent: html,
+  await mailjet.post("send", { version: "v3.1" }).request({
+    Messages: [
+      {
+        From: { Email: "rentalsystem42@gmail.com", Name: "Smart Finance" },
+        To: [{ Email: to }],
+        Subject: subject,
+        HTMLPart: html,
+      },
+    ],
   });
 
   console.log(`Email sent to ${to}`);
