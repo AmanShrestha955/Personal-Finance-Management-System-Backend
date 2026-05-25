@@ -1,11 +1,9 @@
-const { Resend } = require("resend");
-const resend = new Resend(process.env.RESEND_API_KEY);
+// ✅ correct
+const SibApiV3Sdk = require("sib-api-v3-sdk");
 
-/**
- * @param {string} toEmail - recipient email
- * @param {string} userName - recipient name
- * @param {Array} goals - list of saving goals
- */
+const client = SibApiV3Sdk.ApiClient.instance;
+client.authentications["api-key"].apiKey = process.env.BREVO_API_KEY;
+
 const sendWeeklyReminderEmail = async (toEmail, userName, goals) => {
   const goalRows = goals
     .map((goal) => {
@@ -17,8 +15,6 @@ const sendWeeklyReminderEmail = async (toEmail, userName, goals) => {
         (deadline - new Date()) / (1000 * 60 * 60 * 24),
       );
       const remaining = goal.targetAmount - goal.currentSaving;
-
-      // Calculate weekly savings needed
       const weeksLeft = Math.ceil(daysLeft / 7);
       const weeklyNeeded =
         weeksLeft > 0
@@ -31,65 +27,74 @@ const sendWeeklyReminderEmail = async (toEmail, userName, goals) => {
           <td style="padding: 12px; border-bottom: 1px solid #eee;">${goal.category}</td>
           <td style="padding: 12px; border-bottom: 1px solid #eee;">
             <div style="background:#eee; border-radius:4px; height:10px; width:100%;">
-              <div style="background:#4CAF50; width:${Math.min(progress, 100)}%; height:10px; border-radius:4px;"></div>
+              <div style="background:#4f8ef7; width:${Math.min(progress, 100)}%; height:10px; border-radius:4px;"></div>
             </div>
-            <span>${progress}%</span>
+            <span style="font-size:12px; color:#6b7280;">${progress}%</span>
           </td>
           <td style="padding: 12px; border-bottom: 1px solid #eee;">$${goal.currentSaving} / $${goal.targetAmount}</td>
-          <td style="padding: 12px; border-bottom: 1px solid #eee;">${daysLeft > 0 ? `${daysLeft} days` : "Overdue"}</td>
+          <td style="padding: 12px; border-bottom: 1px solid #eee; color: ${daysLeft <= 7 ? "#ef4444" : "#374151"};">
+            ${daysLeft > 0 ? `${daysLeft} days` : "<span style='color:#ef4444;'>Overdue</span>"}
+          </td>
           <td style="padding: 12px; border-bottom: 1px solid #eee;">$${weeklyNeeded}/week</td>
         </tr>
       `;
     })
     .join("");
 
-  await resend.emails.send({
-    from: `"Saving Goals App" <${process.env.EMAIL_USER}>`,
-    to: toEmail,
-    subject: "📊 Your Weekly Saving Goals Reminder",
-    html: `
-      <div style="font-family: Arial, sans-serif; max-width: 700px; margin: auto; padding: 20px;">
-        <h2 style="color: #4CAF50;">Hi ${userName}, here's your weekly savings update!</h2>
-        <p style="color: #666;">Stay on track with your saving goals. Here's how you're doing:</p>
+  const apiInstance = new SibApiV3Sdk.TransactionalEmailsApi();
 
-        <table style="width:100%; border-collapse: collapse; margin-top: 20px;">
-          <thead>
-            <tr style="background: #f5f5f5;">
-              <th style="padding: 12px; text-align:left;">Goal</th>
-              <th style="padding: 12px; text-align:left;">Category</th>
-              <th style="padding: 12px; text-align:left;">Progress</th>
-              <th style="padding: 12px; text-align:left;">Saved</th>
-              <th style="padding: 12px; text-align:left;">Deadline</th>
-              <th style="padding: 12px; text-align:left;">Weekly Needed</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${goalRows}
-          </tbody>
-        </table>
-
-        <p style="margin-top: 30px; color: #999; font-size: 12px;">
-          You are receiving this because you have active saving goals. 
-          You can disable reminders in your app settings.
-        </p>
+  await apiInstance.sendTransacEmail({
+    sender: { name: "Smart Finance", email: "rentalsystem42@gmail.com" },
+    to: [{ email: toEmail }],
+    subject: "Your weekly saving goals reminder",
+    htmlContent: `
+      <div style="font-family: sans-serif; max-width: 700px; margin: 0 auto; border: 1px solid #e5e7eb; border-radius: 12px; overflow: hidden;">
+        <div style="background: #1a1a2e; padding: 28px 40px;">
+          <span style="color: white; font-size: 18px; font-weight: 500;">💰 Smart Finance</span>
+        </div>
+        <div style="padding: 32px 40px; background: #ffffff;">
+          <h2 style="font-size: 20px; font-weight: 600; color: #111827; margin: 0 0 8px;">
+            Hi ${userName}, here's your weekly savings update!
+          </h2>
+          <p style="font-size: 14px; color: #6b7280; margin: 0 0 24px;">
+            Stay on track with your saving goals. Here's how you're doing this week:
+          </p>
+          <table style="width: 100%; border-collapse: collapse;">
+            <thead>
+              <tr style="background: #f9fafb;">
+                <th style="padding: 12px; text-align: left; font-size: 13px; color: #6b7280; font-weight: 500;">Goal</th>
+                <th style="padding: 12px; text-align: left; font-size: 13px; color: #6b7280; font-weight: 500;">Category</th>
+                <th style="padding: 12px; text-align: left; font-size: 13px; color: #6b7280; font-weight: 500;">Progress</th>
+                <th style="padding: 12px; text-align: left; font-size: 13px; color: #6b7280; font-weight: 500;">Saved</th>
+                <th style="padding: 12px; text-align: left; font-size: 13px; color: #6b7280; font-weight: 500;">Deadline</th>
+                <th style="padding: 12px; text-align: left; font-size: 13px; color: #6b7280; font-weight: 500;">Weekly needed</th>
+              </tr>
+            </thead>
+            <tbody>${goalRows}</tbody>
+          </table>
+        </div>
+        <div style="border-top: 1px solid #f3f4f6; padding: 20px 40px; background: #f9fafb;">
+          <p style="font-size: 12px; color: #9ca3af; margin: 0;">
+            You're receiving this because you have active saving goals. You can disable reminders in your app settings.
+          </p>
+        </div>
       </div>
     `,
   });
+
   console.log(`Weekly reminder email sent to ${toEmail}`);
 };
 
-/**
- * @param {string} to - recipient email
- * @param {string} subject - email subject
- * @param {string} html - email html body
- */
 const sendEmail = async ({ to, subject, html }) => {
-  await resend.emails.send({
-    from: `"Saving Goals App" <onboarding@resend.dev>`,
-    to,
+  const apiInstance = new SibApiV3Sdk.TransactionalEmailsApi();
+
+  await apiInstance.sendTransacEmail({
+    sender: { name: "Smart Finance", email: "rentalsystem42@gmail.com" },
+    to: [{ email: to }],
     subject,
-    html,
+    htmlContent: html,
   });
+
   console.log(`Email sent to ${to}`);
 };
 
