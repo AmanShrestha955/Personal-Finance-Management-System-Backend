@@ -53,6 +53,10 @@ const BudgetSchema = new Schema(
       enum: ["personal", "shared"],
       default: "personal",
     },
+    lastAlertEmailSent: {
+      type: Date,
+      default: null,
+    },
   },
   { timestamps: true },
 );

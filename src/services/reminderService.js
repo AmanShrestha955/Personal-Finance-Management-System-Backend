@@ -3,7 +3,7 @@ const SavingGoal = require("../models/savingGoalModels.js");
 const User = require("../models/userModels.js"); // adjust path if needed
 const { sendWeeklyReminderEmail } = require("./emailService.js");
 
-const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
+const SEVEN_DAYS_MS = 4 * 24 * 60 * 60 * 1000; // changed to 4 days for testing,
 
 const sendWeeklyReminders = async () => {
   try {

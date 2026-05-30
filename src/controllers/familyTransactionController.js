@@ -29,8 +29,10 @@
 const Transaction = require("../models/transactionModels.js");
 const Account = require("../models/accountModels.js");
 const Budget = require("../models/budgetModels.js");
+const User = require("../models/userModels.js");
 const { Family, FAMILY_ROLE } = require("../models/familyModels.js");
 const mongoose = require("mongoose");
+const { sendBudgetAlertEmail } = require("../services/emailService");
 
 // ─────────────────────────────────────────────
 // Helper – resolve the caller's role inside a family
@@ -260,6 +262,40 @@ const createFamilyTransaction = async (req, res) => {
           warningMessage = `Family has used ${spentPercentage.toFixed(0)}% of the ${category} budget.`;
           warningStatus = "warning";
         }
+
+        // Send email alert if threshold exceeded (once per month)
+        if (spentPercentage >= budget.alertThreshold) {
+          const lastEmailSent = budget.lastAlertEmailSent
+            ? new Date(budget.lastAlertEmailSent)
+            : null;
+          const currentMonth = new Date();
+          const shouldSendEmail =
+            !lastEmailSent ||
+            lastEmailSent.getFullYear() !== currentMonth.getFullYear() ||
+            lastEmailSent.getMonth() !== currentMonth.getMonth();
+
+          if (shouldSendEmail) {
+            try {
+              const user = await User.findById(userId).select("name email");
+              if (user && user.email) {
+                await sendBudgetAlertEmail(user.email, user.name, {
+                  category: category.trim(),
+                  spentAmount: budget.spentAmount,
+                  budgetAmount: budget.budgetAmount,
+                  spentPercentage,
+                  alertThreshold: budget.alertThreshold,
+                });
+                budget.lastAlertEmailSent = new Date();
+                await budget.save({ session });
+              }
+            } catch (emailError) {
+              console.error(
+                `Error sending budget alert email: ${emailError.message}`,
+              );
+              // Don't throw - let transaction complete even if email fails
+            }
+          }
+        }
       }
 
       await familyAccount.save({ session });
@@ -297,7 +333,15 @@ const getFamilyTransactions = async (req, res) => {
   try {
     const { id: userId } = req.user;
     const { familyId } = req.params;
-    const { type, category, startDate, endDate, search, page = 1, limit = 10 } = req.query;
+    const {
+      type,
+      category,
+      startDate,
+      endDate,
+      search,
+      page = 1,
+      limit = 10,
+    } = req.query;
 
     await resolveFamilyRole(familyId, userId, null);
 
@@ -676,6 +720,42 @@ const updateFamilyTransaction = async (req, res) => {
         } else if (spentPercentage >= newBudget.alertThreshold) {
           warningMessage = `Family has used ${spentPercentage.toFixed(0)}% of the ${newCategory} budget.`;
           warningStatus = "warning";
+        }
+
+        // Send email alert if threshold exceeded (once per month)
+        if (spentPercentage >= newBudget.alertThreshold) {
+          const lastEmailSent = newBudget.lastAlertEmailSent
+            ? new Date(newBudget.lastAlertEmailSent)
+            : null;
+          const currentMonth = new Date();
+          const shouldSendEmail =
+            !lastEmailSent ||
+            lastEmailSent.getFullYear() !== currentMonth.getFullYear() ||
+            lastEmailSent.getMonth() !== currentMonth.getMonth();
+
+          if (shouldSendEmail) {
+            try {
+              const user = await User.findById(transaction.userId).select(
+                "name email",
+              );
+              if (user && user.email) {
+                await sendBudgetAlertEmail(user.email, user.name, {
+                  category: newCategory,
+                  spentAmount: newBudget.spentAmount,
+                  budgetAmount: newBudget.budgetAmount,
+                  spentPercentage,
+                  alertThreshold: newBudget.alertThreshold,
+                });
+                newBudget.lastAlertEmailSent = new Date();
+                await newBudget.save({ session });
+              }
+            } catch (emailError) {
+              console.error(
+                `Error sending budget alert email: ${emailError.message}`,
+              );
+              // Don't throw - let transaction complete even if email fails
+            }
+          }
         }
       }
     }

@@ -1,8 +1,10 @@
 const Transaction = require("../models/transactionModels.js");
 const Budget = require("../models/budgetModels.js");
 const Account = require("../models/accountModels.js");
+const User = require("../models/userModels.js");
 const mongoose = require("mongoose");
 const { createTransactionCore } = require("../services/transactionServices.js");
+const { sendBudgetAlertEmail } = require("../services/emailService.js");
 
 const createTransaction = async (req, res) => {
   try {
@@ -363,6 +365,33 @@ const updateTransaction = async (req, res) => {
           (newBudget.spentAmount / newBudget.budgetAmount) * 100;
         if (spentPercentage >= newBudget.alertThreshold) {
           warningMessage = `You've used ${spentPercentage.toFixed(0)}% of your ${newCategory} budget.`;
+          warningStatus = "warning";
+          
+          // Check if we should send email (once per month)
+          const lastEmailSent = newBudget.lastAlertEmailSent ? new Date(newBudget.lastAlertEmailSent) : null;
+          const currentMonth = new Date();
+          const shouldSendEmail = !lastEmailSent || 
+            lastEmailSent.getFullYear() !== currentMonth.getFullYear() || 
+            lastEmailSent.getMonth() !== currentMonth.getMonth();
+          
+          if (shouldSendEmail) {
+            try {
+              const user = await User.findById(id).select("name email");
+              if (user && user.email) {
+                await sendBudgetAlertEmail(user.email, user.name, {
+                  category: newCategory,
+                  spentAmount: newBudget.spentAmount,
+                  budgetAmount: newBudget.budgetAmount,
+                  spentPercentage,
+                  alertThreshold: newBudget.alertThreshold,
+                });
+                newBudget.lastAlertEmailSent = new Date();
+              }
+            } catch (emailError) {
+              console.error(`Error sending budget alert email: ${emailError.message}`);
+              // Don't throw - let transaction complete even if email fails
+            }
+          }
         }
         if (spentPercentage >= 100) {
           warningMessage = `You've exceeded your ${newCategory} budget!`;

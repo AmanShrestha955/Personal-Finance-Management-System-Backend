@@ -2,6 +2,8 @@ const mongoose = require("mongoose");
 const Transaction = require("../models/transactionModels");
 const Budget = require("../models/budgetModels");
 const Account = require("../models/accountModels");
+const User = require("../models/userModels");
+const { sendBudgetAlertEmail } = require("./emailService");
 
 /**
  * createTransactionCore
@@ -103,6 +105,32 @@ async function createTransactionCore(data) {
         if (spentPercentage >= budget.alertThreshold) {
           warningMessage = `You've used ${spentPercentage.toFixed(0)}% of your ${category} budget.`;
           warningStatus = "warning";
+          
+          // Check if we should send email (once per month)
+          const lastEmailSent = budget.lastAlertEmailSent ? new Date(budget.lastAlertEmailSent) : null;
+          const currentMonth = new Date();
+          const shouldSendEmail = !lastEmailSent || 
+            lastEmailSent.getFullYear() !== currentMonth.getFullYear() || 
+            lastEmailSent.getMonth() !== currentMonth.getMonth();
+          
+          if (shouldSendEmail) {
+            try {
+              const user = await User.findById(userId).select("name email");
+              if (user && user.email) {
+                await sendBudgetAlertEmail(user.email, user.name, {
+                  category,
+                  spentAmount: budget.spentAmount,
+                  budgetAmount: budget.budgetAmount,
+                  spentPercentage,
+                  alertThreshold: budget.alertThreshold,
+                });
+                budget.lastAlertEmailSent = new Date();
+              }
+            } catch (emailError) {
+              console.error(`Error sending budget alert email: ${emailError.message}`);
+              // Don't throw - let transaction complete even if email fails
+            }
+          }
         }
         if (spentPercentage >= 100) {
           warningMessage = `You've exceeded your ${category} budget!`;
